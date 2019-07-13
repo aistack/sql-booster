@@ -1,18 +1,19 @@
 package tech.mlsql.sqlbooster.meta
 
-import org.apache.spark.sql.catalyst.plans.logical.{LogicalPlan, Project, SubqueryAlias}
+import org.apache.spark.sql.catalyst.expressions.NamedExpression
+import org.apache.spark.sql.catalyst.optimizer.RewriteHelper
+import org.apache.spark.sql.catalyst.plans.logical.LogicalPlan
 import org.apache.spark.sql.types.StructType
-import org.apache.spark.sql.{DataFrame, Row, SparkSession}
+import org.apache.spark.sql.{Row, SparkSession}
 import tech.mlsql.schema.parser.SparkSimpleSchemaParser
 
 import scala.collection.JavaConverters._
-import scala.collection.mutable.ArrayBuffer
 
 /**
   * 2019-07-11 WilliamZhu(allwefantasy@gmail.com)
   */
 
-class ViewCatalyst(spark: SparkSession) {
+class ViewCatalyst(sparkOpt: Option[SparkSession]) extends RewriteHelper {
 
   //view name -> LogicalPlan
   private val data = new java.util.concurrent.ConcurrentHashMap[String, LogicalPlan]()
@@ -29,18 +30,7 @@ class ViewCatalyst(spark: SparkSession) {
     * @return
     */
   def register(name: String, sql: String, _createSchemaList: List[String] = List()) = {
-    def extractAllRefTables(df: DataFrame) = {
-      val tables = ArrayBuffer[String]()
-      df.queryExecution.analyzed.transformDown {
-        case a@SubqueryAlias(_, _: Project) =>
-          a
-        case a@SubqueryAlias(_, _) =>
-          tables += a.name.unquotedString
-          a
-
-      }
-      tables
-    }
+    val spark = sparkOpt.get
 
     def pushToTableToViews(tableName: String) = {
       val items = tableToViews.asScala.getOrElse(tableName, Set[String]())
@@ -56,7 +46,7 @@ class ViewCatalyst(spark: SparkSession) {
     val df = spark.sql(sql)
 
     if (_createSchemaList.size == 0) {
-      extractAllRefTables(df).foreach { tableName =>
+      extractTablesFromPlan(df.queryExecution.analyzed).foreach { tableName =>
         pushToTableToViews(tableName)
       }
     }
@@ -67,6 +57,7 @@ class ViewCatalyst(spark: SparkSession) {
 
   }
 
+
   def getCandinateViewsByTable(tableName: String) = {
     tableToViews.asScala.get(tableName)
   }
@@ -76,10 +67,12 @@ class ViewCatalyst(spark: SparkSession) {
   }
 }
 
+case class TableHolder(db: String, table: String, output: Seq[NamedExpression], lp: LogicalPlan)
+
 object ViewCatalyst {
   private var _meta: ViewCatalyst = null
 
-  def createViewCatalyst(spark: SparkSession) = {
+  def createViewCatalyst(spark: Option[SparkSession] = None) = {
     _meta = new ViewCatalyst(spark)
   }
 

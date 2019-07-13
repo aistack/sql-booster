@@ -1,17 +1,24 @@
 package org.apache.spark.sql.catalyst.optimizer
 
-import org.apache.spark.sql.catalyst.expressions.{EqualNullSafe, EqualTo, Expression, PredicateHelper}
+import org.apache.spark.sql.catalyst.catalog.HiveTableRelation
+import org.apache.spark.sql.catalyst.expressions._
+import org.apache.spark.sql.catalyst.optimizer.rewrite.matcher.{CompensationExpressions, WhereMatcher}
 import org.apache.spark.sql.catalyst.plans.logical._
 import org.apache.spark.sql.catalyst.rules.Rule
-import org.apache.spark.sql.sources._
+import org.apache.spark.sql.execution.datasources.LogicalRelation
 import tech.mlsql.sqlbooster.meta.ViewCatalyst
+
+import scala.collection.mutable.ArrayBuffer
 
 /**
   * References:
   * [GL01] Jonathan Goldstein and Per-åke Larson.
   * Optimizing queries using materialized views: A practical, scalable solution. In Proc. ACM SIGMOD Conf., 2001.
   */
-object RewriteTableToView extends Rule[LogicalPlan] with PredicateHelper {
+object RewriteTableToViews extends Rule[LogicalPlan] with PredicateHelper {
+  val batches = ArrayBuffer[WithoutJoinGroupRule](
+    WithoutJoinGroupRule.apply
+  )
 
   def apply(plan: LogicalPlan): LogicalPlan = {
     if (isSPJG(plan)) {
@@ -26,7 +33,11 @@ object RewriteTableToView extends Rule[LogicalPlan] with PredicateHelper {
 
   private def rewrite(plan: LogicalPlan) = {
     // this plan is SPJG, but the first step is check whether we can rewrite it
-    plan
+    var rewritePlan = plan
+    batches.foreach { rewriter =>
+      rewritePlan = rewriter.rewrite(rewritePlan)
+    }
+    rewritePlan
   }
 
   /**
@@ -44,6 +55,7 @@ object RewriteTableToView extends Rule[LogicalPlan] with PredicateHelper {
       case p@Aggregate(_, _, Filter(_, Join(_, _, _, _))) => true
       case p@Project(_, Filter(_, _)) => true
       case p@Aggregate(_, _, Join(_, _, _, _)) => true
+      case p@Filter(_, _) => true
       case _ => false
     }
   }
@@ -55,6 +67,10 @@ trait RewriteMatchRule extends RewriteHelper {
   def rewrite(plan: LogicalPlan): LogicalPlan
 
 
+}
+
+object WithoutJoinGroupRule {
+  def apply: WithoutJoinGroupRule = new WithoutJoinGroupRule()
 }
 
 class WithJoinGroupRule extends RewriteMatchRule {
@@ -86,27 +102,26 @@ class WithJoinGroupRule extends RewriteMatchRule {
 
 class WithoutJoinGroupRule extends RewriteMatchRule {
   override def fetchView(plan: LogicalPlan): Option[LogicalPlan] = {
-    val viewPlan = plan match {
-      case p@Project(_, Filter(_, table@SubqueryAlias(_, _))) =>
-        ViewCatalyst.meta.getCandinateViewsByTable(table.name.unquotedString) match {
-          case Some(viewNames) =>
-            val targetViewNameOption = viewNames.filter { viewName =>
-              ViewCatalyst.meta.getViewLogicalPlan(viewName) match {
-                case Some(viewLogicalPlan) =>
-                  extractTablesFromPlan(viewLogicalPlan) == Set(table.name.unquotedString)
-                case None => false
-              }
-            }.headOption
+    val tables = extractTablesFromPlan(plan)
+    if (tables.size == 0) return None
+    val table = tables.head
+    val viewPlan = ViewCatalyst.meta.getCandinateViewsByTable(table) match {
+      case Some(viewNames) =>
+        val targetViewNameOption = viewNames.filter { viewName =>
+          ViewCatalyst.meta.getViewLogicalPlan(viewName) match {
+            case Some(viewLogicalPlan) =>
+              extractTablesFromPlan(viewLogicalPlan).toSet == Set(table)
+            case None => false
+          }
+        }.headOption
 
-            targetViewNameOption match {
-              case Some(targetViewName) =>
-                Option(ViewCatalyst.meta.getViewLogicalPlan(targetViewName).get)
-              case None => None
-            }
-
+        targetViewNameOption match {
+          case Some(targetViewName) =>
+            Option(ViewCatalyst.meta.getViewLogicalPlan(targetViewName).get)
           case None => None
         }
-      case _ => None
+
+      case None => None
     }
     viewPlan
   }
@@ -147,63 +162,51 @@ class WithoutJoinGroupRule extends RewriteMatchRule {
       case Project(projectList, Filter(condition, _)) =>
         queryConjunctivePredicates = splitConjunctivePredicates(condition)
         queryProjectList = projectList
+      case Project(projectList, _) =>
+        queryProjectList = projectList
     }
 
     normalizePlan(targetViewPlan) match {
       case Project(projectList, Filter(condition, _)) =>
         viewConjunctivePredicates = splitConjunctivePredicates(condition)
         viewProjectList = projectList
+      case Project(projectList, _) =>
+        queryProjectList = projectList
     }
 
-    // val compsentCondition = queryEquals.toSet -- viewEquals.toSet
-    plan
+    val whereMatcher = new WhereMatcher()
+    val compensationExpressions = whereMatcher.compare(queryConjunctivePredicates, viewConjunctivePredicates)
+
+    val newplan = compensationExpressions match {
+      case CompensationExpressions(true, compensation) =>
+        val tempPlan = plan transformDown {
+          case SubqueryAlias(_, _) =>
+            ViewLogicalPlan(targetViewPlan)
+          case HiveTableRelation(_, _, _) =>
+            ViewLogicalPlan(targetViewPlan)
+          case LogicalRelation(_, output, catalogTable, _) =>
+            ViewLogicalPlan(targetViewPlan)
+          case a@Filter(condition, child) =>
+            Filter(mergeConjunctiveExpressions(compensationExpressions.compensation), child)
+        }
+        //chagne back
+        tempPlan transformDown {
+          case ViewLogicalPlan(inner) => inner
+        }
+      // turn back
+      case CompensationExpressions(false, compensation) => plan
+    }
+
+    newplan
   }
 
-  val equalCon = (f: Expression) => {
-    f.isInstanceOf[EqualNullSafe] || f.isInstanceOf[EqualTo]
-  }
-  val rangeCon = (f: Expression) => {
-    f.isInstanceOf[GreaterThan] ||
-      f.isInstanceOf[GreaterThanOrEqual] ||
-      f.isInstanceOf[LessThan] ||
-      f.isInstanceOf[LessThanOrEqual]
-  }
 
+}
 
-  def extractEqualConditions(conjunctivePredicates: Seq[Expression]) = {
-    conjunctivePredicates.filter(equalCon)
-  }
+case class ViewLogicalPlan(inner: LogicalPlan) extends LogicalPlan {
+  override def output: Seq[Attribute] = inner.output
 
-  def extractRangeConditions(conjunctivePredicates: Seq[Expression]) = {
-    conjunctivePredicates.filter(rangeCon)
-  }
-
-  def extractResidualCondtions(conjunctivePredicates: Seq[Expression]) = {
-    conjunctivePredicates.filterNot(equalCon).filterNot(rangeCon)
-  }
+  override def children: Seq[LogicalPlan] = inner.children
 }
 
 
-object RewriteMatchRule {
-
-  def viewMatch(plan: LogicalPlan) = {
-    plan transformDown {
-      case a@SubqueryAlias(_, _: Project) =>
-        a
-      case a@SubqueryAlias(_, _) =>
-
-        a
-
-    }
-  }
-
-  /**
-    * According to [GL01], if query sub match the view join tables,
-    * You should make sure they have PK constrain. For Now, we
-    * only care when the join table are fully match
-    */
-  def joinTableAllMatch(plan: LogicalPlan) = {
-
-  }
-
-}

@@ -1,8 +1,11 @@
 package org.apache.spark.sql.catalyst.optimizer
 
+import org.apache.spark.sql.catalyst.catalog.HiveTableRelation
 import org.apache.spark.sql.catalyst.expressions.aggregate.AggregateExpression
 import org.apache.spark.sql.catalyst.expressions.{Alias, And, AttributeReference, EqualNullSafe, EqualTo, Exists, ExprId, Expression, ListQuery, NamedLambdaVariable, PredicateHelper, ScalarSubquery}
 import org.apache.spark.sql.catalyst.plans.logical._
+import org.apache.spark.sql.execution.datasources.LogicalRelation
+import tech.mlsql.sqlbooster.meta.TableHolder
 
 /**
   * 2019-07-12 WilliamZhu(allwefantasy@gmail.com)
@@ -83,11 +86,27 @@ trait RewriteHelper extends PredicateHelper {
   }
 
   def extractTablesFromPlan(plan: LogicalPlan) = {
-    var tables = Set[String]()
+    extractTableHolderFromPlan(plan).map { holder =>
+      if (holder.db != null) holder.db + "." + holder.table
+      else holder.table
+    }
+  }
+
+  def extractTableHolderFromPlan(plan: LogicalPlan) = {
+    var tables = Set[TableHolder]()
     plan transformDown {
       case a@SubqueryAlias(_, _) =>
-        tables += a.name.unquotedString
+        tables += TableHolder(null, a.name.unquotedString, a.output, a)
         a
+      case m@HiveTableRelation(tableMeta, _, _) =>
+        tables += TableHolder(tableMeta.database, tableMeta.identifier.table, m.output, m)
+        m
+      case m@LogicalRelation(_, output, catalogTable, _) =>
+        val tableIdentifier = catalogTable.map(_.identifier)
+        val database = tableIdentifier.map(_.database).flatten.getOrElse(null)
+        val table = tableIdentifier.map(_.table).getOrElse(null)
+        tables += TableHolder(database, table, output, m)
+        m
     }
     tables.toList
   }
@@ -110,8 +129,15 @@ trait RewriteHelper extends PredicateHelper {
   }
 
   /** Fails the test if the two expressions do not match */
-  protected def compareExpressions(e1: Expression, e2: Expression): Unit = {
+  protected def compareExpressions(e1: Expression, e2: Expression) = {
     comparePlans(Filter(e1, OneRowRelation()), Filter(e2, OneRowRelation()))
   }
+
+  def mergeConjunctiveExpressions(e: Seq[Expression]) = {
+    e.reduce { (a, b) =>
+      And(a, b)
+    }
+  }
+
 
 }
