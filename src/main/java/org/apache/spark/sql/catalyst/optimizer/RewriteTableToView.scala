@@ -2,7 +2,7 @@ package org.apache.spark.sql.catalyst.optimizer
 
 import org.apache.spark.sql.catalyst.catalog.HiveTableRelation
 import org.apache.spark.sql.catalyst.expressions._
-import org.apache.spark.sql.catalyst.optimizer.rewrite.matcher.{CompensationExpressions, WhereMatcher}
+import org.apache.spark.sql.catalyst.optimizer.rewrite.component.{CompensationExpressions, PredicateMatcher}
 import org.apache.spark.sql.catalyst.plans.logical._
 import org.apache.spark.sql.catalyst.rules.Rule
 import org.apache.spark.sql.execution.datasources.LogicalRelation
@@ -174,7 +174,7 @@ class WithoutJoinGroupRule extends RewriteMatchRule {
         queryProjectList = projectList
     }
 
-    val whereMatcher = new WhereMatcher()
+    val whereMatcher = new PredicateMatcher()
     val compensationExpressions = whereMatcher.compare(queryConjunctivePredicates, viewConjunctivePredicates)
 
     val newplan = compensationExpressions match {

@@ -134,8 +134,10 @@ class WholeTestSuite extends SparkFunSuite {
       val lp = spark.sql(""" select * from at where a="jack" and b="wow" """).queryExecution.optimizedPlan
       val analyzed = spark.sql(""" select * from at where a="jack" and b="wow" """).queryExecution.analyzed
       println(analyzed)
+      println(new LogicalPlanSQL(analyzed, new BasicSQLDialect).toSQL)
       val optimized = OptimizeRewrite.execute(analyzed)
       println(optimized)
+
     }
   }
 }

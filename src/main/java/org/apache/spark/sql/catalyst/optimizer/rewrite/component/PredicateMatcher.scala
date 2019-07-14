@@ -1,98 +1,25 @@
-package org.apache.spark.sql.catalyst.optimizer.rewrite.matcher
+package org.apache.spark.sql.catalyst.optimizer.rewrite.component
 
 import org.apache.spark.sql.catalyst.expressions.{EqualNullSafe, EqualTo, Expression, GreaterThan, GreaterThanOrEqual, LessThan, LessThanOrEqual, Literal}
-import org.apache.spark.sql.catalyst.optimizer.RewriteHelper
 import org.apache.spark.sql.types._
 
 import scala.collection.mutable.ArrayBuffer
 
 
-case class CompensationExpressions(isRewriteSuccess: Boolean, compensation: Seq[Expression])
-
-case class RangeCondition(key: Expression, lowerBound: Option[Literal], upperBound: Option[Literal],
-                          includeLowerBound: Boolean,
-                          includeUpperBound: Boolean) {
-
-  def toExpression: Seq[Expression] = {
-    (lowerBound, upperBound) match {
-      case (None, None) => Seq()
-      case (Some(l), None) => if (includeLowerBound)
-        Seq(GreaterThanOrEqual(key, l)) else Seq(GreaterThan(key, l))
-      case (None, Some(l)) => if (includeUpperBound)
-        Seq(LessThanOrEqual(key, l)) else Seq(LessThan(key, l))
-      case (Some(a), Some(b)) =>
-        val aSeq = if (includeLowerBound)
-          Seq(GreaterThanOrEqual(key, a)) else Seq(GreaterThan(key, a))
-        val bSeq = if (includeUpperBound)
-          Seq(LessThanOrEqual(key, b)) else Seq(LessThan(key, b))
-        aSeq ++ bSeq
-    }
-  }
-
-  def isSubRange(other: RangeCondition) = {
-    this.key.semanticEquals(other.key) &&
-      greaterThenOrEqual(this.lowerBound, other.lowerBound) &&
-      greaterThenOrEqual(other.upperBound, this.upperBound)
-  }
-
-  def greaterThenOrEqual(lit1: Option[Literal], lit2: Option[Literal]) = {
-    (lit1, lit2) match {
-      case (None, None) => true
-      case (Some(l), None) => true
-      case (None, Some(l)) => true
-      case (Some(a), Some(b)) =>
-        a.dataType match {
-
-          case ShortType | IntegerType | LongType | FloatType | DoubleType => a.value.toString.toDouble >= b.value.toString.toDouble
-          case StringType => a.value.toString >= b.value.toString
-          case _ => throw new RuntimeException("not support type")
-        }
-    }
-  }
-
-  def +(other: RangeCondition) = {
-    assert(this.key.semanticEquals(other.key))
-
-
-    val _lowerBound = if (greaterThenOrEqual(this.lowerBound, other.lowerBound))
-      (this.lowerBound, this.includeLowerBound) else (other.lowerBound, other.includeLowerBound)
-
-    val _upperBound = if (greaterThenOrEqual(this.upperBound, other.upperBound))
-      (other.upperBound, other.includeUpperBound) else (this.upperBound, this.includeUpperBound)
-    RangeCondition(key, _lowerBound._1, _upperBound._1, _lowerBound._2, _upperBound._2)
-  }
-
-
-}
-
-
-trait ExpressionMatcher extends ExpressionMatcherHelper {
-  val DEFAULT = CompensationExpressions(false, Seq())
-
-  def compare(query: Seq[Expression], view: Seq[Expression]): CompensationExpressions
-}
-
-trait ExpressionMatcherHelper extends RewriteHelper {
-  def isSubSetOf(e1: Seq[Expression], e2: Seq[Expression]) = {
-    val zipCount = Math.min(e1.size, e2.size)
-    (0 until zipCount).map { index => if (e1(index).semanticEquals(e2(index))) 0 else 1 }.sum == 0
-  }
-
-  def subset[T](e1: Seq[T], e2: Seq[T]) = {
-    assert(e1.size >= e2.size)
-    if (e1.size == 0) Seq[Expression]()
-    e1.slice(e2.size, e1.size)
-  }
-}
-
 /**
   * Here we compare where conditions
   *
-  *  1. Equal
-  *  2. NoEqual (greater/less)
-  *  3. others
+  *  1. Equal  view subSetOf query
+  *  2. NoEqual (greater/less) , we first convert them to RangeCondition,
+  * so we can define the range contains(range in query should be narrow then range in view)
+  * between RangeCondition, and the
+  * final check view subSetOf query
+  *
+  *  3. others. Using expression semanticEqual, and make sure view subSetOf query
+  *
+  *
   */
-class WhereMatcher extends ExpressionMatcher {
+class PredicateMatcher extends ExpressionMatcher {
 
   override def compare(queryConjunctivePredicates: Seq[Expression],
                        viewConjunctivePredicates: Seq[Expression]
@@ -195,4 +122,60 @@ class WhereMatcher extends ExpressionMatcher {
   def extractResidualConditions(conjunctivePredicates: Seq[Expression]) = {
     conjunctivePredicates.filterNot(equalCon).filterNot(rangeCon)
   }
+}
+
+case class RangeCondition(key: Expression, lowerBound: Option[Literal], upperBound: Option[Literal],
+                          includeLowerBound: Boolean,
+                          includeUpperBound: Boolean) {
+
+  def toExpression: Seq[Expression] = {
+    (lowerBound, upperBound) match {
+      case (None, None) => Seq()
+      case (Some(l), None) => if (includeLowerBound)
+        Seq(GreaterThanOrEqual(key, l)) else Seq(GreaterThan(key, l))
+      case (None, Some(l)) => if (includeUpperBound)
+        Seq(LessThanOrEqual(key, l)) else Seq(LessThan(key, l))
+      case (Some(a), Some(b)) =>
+        val aSeq = if (includeLowerBound)
+          Seq(GreaterThanOrEqual(key, a)) else Seq(GreaterThan(key, a))
+        val bSeq = if (includeUpperBound)
+          Seq(LessThanOrEqual(key, b)) else Seq(LessThan(key, b))
+        aSeq ++ bSeq
+    }
+  }
+
+  def isSubRange(other: RangeCondition) = {
+    this.key.semanticEquals(other.key) &&
+      greaterThenOrEqual(this.lowerBound, other.lowerBound) &&
+      greaterThenOrEqual(other.upperBound, this.upperBound)
+  }
+
+  def greaterThenOrEqual(lit1: Option[Literal], lit2: Option[Literal]) = {
+    (lit1, lit2) match {
+      case (None, None) => true
+      case (Some(l), None) => true
+      case (None, Some(l)) => true
+      case (Some(a), Some(b)) =>
+        a.dataType match {
+
+          case ShortType | IntegerType | LongType | FloatType | DoubleType => a.value.toString.toDouble >= b.value.toString.toDouble
+          case StringType => a.value.toString >= b.value.toString
+          case _ => throw new RuntimeException("not support type")
+        }
+    }
+  }
+
+  def +(other: RangeCondition) = {
+    assert(this.key.semanticEquals(other.key))
+
+
+    val _lowerBound = if (greaterThenOrEqual(this.lowerBound, other.lowerBound))
+      (this.lowerBound, this.includeLowerBound) else (other.lowerBound, other.includeLowerBound)
+
+    val _upperBound = if (greaterThenOrEqual(this.upperBound, other.upperBound))
+      (other.upperBound, other.includeUpperBound) else (this.upperBound, this.includeUpperBound)
+    RangeCondition(key, _lowerBound._1, _upperBound._1, _lowerBound._2, _upperBound._2)
+  }
+
+
 }
