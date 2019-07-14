@@ -86,7 +86,7 @@ class LogicalPlanSQL(plan: LogicalPlan, dialect: SQLDialect) {
       else childrenSQL.head
     case r: LogicalRelation =>
       dialect.relation(r)
-    case r: LogicalRDD => ""
+    case r: LogicalRDD => "__LogicalRDD__"
     case r: OneRowRelation => ""
     case Filter(condition, child) =>
       val whereOrHaving = child match {
