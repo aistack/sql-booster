@@ -1,4 +1,4 @@
-package org.apache.spark.sql.catalyst
+package org.apache.spark.sql.catalyst.sqlgenerator
 
 /**
   * 2019-07-14 WilliamZhu(allwefantasy@gmail.com)

@@ -1,4 +1,4 @@
-package org.apache.spark.sql.catalyst
+package org.apache.spark.sql.catalyst.sqlgenerator
 
 import java.sql.Connection
 

@@ -7,6 +7,8 @@ import org.apache.spark.sql.catalyst.plans.logical._
 import org.apache.spark.sql.execution.datasources.LogicalRelation
 import tech.mlsql.sqlbooster.meta.TableHolder
 
+import scala.collection.mutable.ArrayBuffer
+
 /**
   * 2019-07-12 WilliamZhu(allwefantasy@gmail.com)
   */
@@ -139,5 +141,29 @@ trait RewriteHelper extends PredicateHelper {
     }
   }
 
+  def extractTheSameExpressions(view: Seq[Expression], query: Seq[Expression]) = {
+    val viewLeft = ArrayBuffer[Expression](view: _*)
+    val queryLeft = ArrayBuffer[Expression](query: _*)
+    val common = ArrayBuffer[Expression]()
+    query.foreach { itemInQuery =>
+      view.foreach { itemInView =>
+        if (itemInView.semanticEquals(itemInQuery)) {
+          common += itemInQuery
+          viewLeft -= itemInView
+          queryLeft -= itemInQuery
+        }
+      }
+    }
+    (viewLeft, queryLeft, common)
+  }
 
+  def extractLeafExpression(expr: Expression) = {
+    val columns = ArrayBuffer[AttributeReference]()
+    expr transformDown {
+      case a@AttributeReference(name, dataType, _, _) =>
+        columns += a
+        a
+    }
+    columns
+  }
 }

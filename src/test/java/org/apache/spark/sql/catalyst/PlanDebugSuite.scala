@@ -3,13 +3,16 @@ package org.apache.spark.sql.catalyst
 
 import org.apache.spark.SparkFunSuite
 import org.apache.spark.sql._
+import org.apache.spark.sql.catalyst.catalog.HiveTableRelation
 import org.apache.spark.sql.catalyst.dsl.expressions._
 import org.apache.spark.sql.catalyst.dsl.plans._
 import org.apache.spark.sql.catalyst.expressions.{Expression, PredicateHelper}
 import org.apache.spark.sql.catalyst.optimizer._
+import org.apache.spark.sql.catalyst.optimizer.rewrite.rule.{RewritedLeafLogicalPlan, RewritedLogicalPlan}
 import org.apache.spark.sql.catalyst.plans.PlanTest
-import org.apache.spark.sql.catalyst.plans.logical.{Filter, LocalRelation, LogicalPlan}
+import org.apache.spark.sql.catalyst.plans.logical.{Filter, LocalRelation, LogicalPlan, SubqueryAlias}
 import org.apache.spark.sql.catalyst.rules.RuleExecutor
+import org.apache.spark.sql.execution.datasources.LogicalRelation
 import org.apache.spark.sql.test.SharedSQLContext
 import org.apache.spark.sql.types.StructType
 import tech.mlsql.schema.parser.SparkSimpleSchemaParser
@@ -133,8 +136,8 @@ class WholeTestSuite extends SparkFunSuite {
       ViewCatalyst.meta.register("ct", """ select * from at where a="jack" """)
       val lp = spark.sql(""" select * from at where a="jack" and b="wow" """).queryExecution.optimizedPlan
       val analyzed = spark.sql(""" select * from at where a="jack" and b="wow" """).queryExecution.analyzed
-      println(analyzed)
-      println(new LogicalPlanSQL(analyzed, new BasicSQLDialect).toSQL)
+      //      println(analyzed)
+      //      println(new LogicalPlanSQL(analyzed, new BasicSQLDialect).toSQL)
       val optimized = OptimizeRewrite.execute(analyzed)
       println(optimized)
 

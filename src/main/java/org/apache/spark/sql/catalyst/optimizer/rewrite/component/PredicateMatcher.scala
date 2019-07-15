@@ -1,6 +1,7 @@
 package org.apache.spark.sql.catalyst.optimizer.rewrite.component
 
 import org.apache.spark.sql.catalyst.expressions.{EqualNullSafe, EqualTo, Expression, GreaterThan, GreaterThanOrEqual, LessThan, LessThanOrEqual, Literal}
+import org.apache.spark.sql.catalyst.optimizer.rewrite.rule.{CompensationExpressions, ExpressionMatcher}
 import org.apache.spark.sql.types._
 
 import scala.collection.mutable.ArrayBuffer
@@ -19,11 +20,11 @@ import scala.collection.mutable.ArrayBuffer
   *
   *
   */
-class PredicateMatcher extends ExpressionMatcher {
-
-  override def compare(queryConjunctivePredicates: Seq[Expression],
+class PredicateMatcher(queryConjunctivePredicates: Seq[Expression],
                        viewConjunctivePredicates: Seq[Expression]
-                      ): CompensationExpressions = {
+                      ) extends ExpressionMatcher {
+
+  override def compare: CompensationExpressions = {
 
     val compensationCond = ArrayBuffer[Expression]()
 
