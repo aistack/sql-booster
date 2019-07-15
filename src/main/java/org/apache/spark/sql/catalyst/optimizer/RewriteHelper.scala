@@ -91,7 +91,7 @@ trait RewriteHelper extends PredicateHelper {
     extractTableHolderFromPlan(plan).map { holder =>
       if (holder.db != null) holder.db + "." + holder.table
       else holder.table
-    }
+    }.filterNot(f => f == null)
   }
 
   def extractTableHolderFromPlan(plan: LogicalPlan) = {
@@ -157,7 +157,8 @@ trait RewriteHelper extends PredicateHelper {
     (viewLeft, queryLeft, common)
   }
 
-  def extractLeafExpression(expr: Expression) = {
+
+  def extractAttributeReference(expr: Expression) = {
     val columns = ArrayBuffer[AttributeReference]()
     expr transformDown {
       case a@AttributeReference(name, dataType, _, _) =>
@@ -166,4 +167,21 @@ trait RewriteHelper extends PredicateHelper {
     }
     columns
   }
+
+  def extractAttributeReferenceFromFirstLevel(exprs: Seq[Expression]) = {
+    exprs.map { expr =>
+      expr match {
+        case a@AttributeReference(name, dataType, _, _) => Option(a)
+        case _ => None
+      }
+    }.filter(_.isDefined).map(_.get)
+  }
+
+  /**
+    * Sometimes we compare two tables with column name and dataType
+    */
+  def attributeReferenceEqual(a: AttributeReference, b: AttributeReference) = {
+    a.name == b.name && a.dataType == b.dataType
+  }
+
 }

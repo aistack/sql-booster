@@ -1,7 +1,7 @@
 package org.apache.spark.sql.catalyst.optimizer
 
 import org.apache.spark.sql.catalyst.expressions._
-import org.apache.spark.sql.catalyst.optimizer.rewrite.rule.WithoutJoinGroupRule
+import org.apache.spark.sql.catalyst.optimizer.rewrite.rule.{RewritedLogicalPlan, WithoutJoinGroupRule}
 import org.apache.spark.sql.catalyst.plans.logical._
 import org.apache.spark.sql.catalyst.rules.Rule
 
@@ -21,8 +21,8 @@ import scala.collection.mutable.ArrayBuffer
   *                       RewriteTableToViews) :: Nil
   *       }
   *
-  *       ViewCatalyst.createViewCatalyst(Option(spark))
-  *       ViewCatalyst.meta.register("ct", """ select * from at where a="jack" """)
+  *       ViewCatalyst.createViewCatalyst()
+  *       ViewCatalyst.meta.registerFromLogicalPlan("viewTable1", viewTable1.logicalPlan, createViewTable1.logicalPlan)
   *
   *       val analyzed = spark.sql(""" select * from at where a="jack" and b="wow" """).queryExecution.analyzed
   *       val mvRewrite = OptimizeRewrite.execute(analyzed)
@@ -54,7 +54,11 @@ object RewriteTableToViews extends Rule[LogicalPlan] with PredicateHelper {
     batches.foreach { rewriter =>
       rewritePlan = rewriter.rewrite(rewritePlan)
     }
-    rewritePlan
+    rewritePlan match {
+      case RewritedLogicalPlan(_, true) => plan
+      case RewritedLogicalPlan(inner, false) => inner
+      case _ => rewritePlan
+    }
   }
 
   /**

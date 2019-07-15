@@ -1,69 +1,17 @@
 package org.apache.spark.sql.catalyst.optimizer.rewrite.rule
 
 import org.apache.spark.sql.catalyst.expressions.Expression
-import org.apache.spark.sql.catalyst.optimizer.rewrite.component.rewrite.{PredicateRewrite, ProjectRewrite, TableOrViewRewrite}
-import org.apache.spark.sql.catalyst.optimizer.rewrite.component.{PredicateMatcher, ProjectMatcher, TableNonOpMatcher}
-import org.apache.spark.sql.catalyst.plans.logical.{Filter, LogicalPlan, Project}
-import tech.mlsql.sqlbooster.meta.ViewCatalyst
+import org.apache.spark.sql.catalyst.optimizer.rewrite.component.rewrite.{GroupByRewrite, PredicateRewrite, ProjectRewrite, TableOrViewRewrite}
+import org.apache.spark.sql.catalyst.optimizer.rewrite.component.{GroupByMatcher, PredicateMatcher, ProjectMatcher, TableNonOpMatcher}
+import org.apache.spark.sql.catalyst.plans.logical.{Aggregate, Filter, LogicalPlan, Project}
 
 import scala.collection.mutable.ArrayBuffer
 
 /**
-  * 2019-07-14 WilliamZhu(allwefantasy@gmail.com)
+  * 2019-07-15 WilliamZhu(allwefantasy@gmail.com)
   */
-object WithoutJoinGroupRule {
-  def apply: WithoutJoinGroupRule = new WithoutJoinGroupRule()
-}
+class WithoutJoinRule extends WithoutJoinGroupRule {
 
-
-class WithoutJoinGroupRule extends RewriteMatchRule {
-  override def fetchView(plan: LogicalPlan): Option[ViewLogicalPlan] = {
-    val tables = extractTablesFromPlan(plan)
-    if (tables.size == 0) return None
-    val table = tables.head
-    val viewPlan = ViewCatalyst.meta.getCandinateViewsByTable(table) match {
-      case Some(viewNames) =>
-        val targetViewNameOption = viewNames.filter { viewName =>
-          ViewCatalyst.meta.getViewCreateLogicalPlan(viewName) match {
-            case Some(viewLogicalPlan) =>
-              extractTablesFromPlan(viewLogicalPlan).toSet == Set(table)
-            case None => false
-          }
-        }.headOption
-
-        targetViewNameOption match {
-          case Some(targetViewName) =>
-            Option(ViewLogicalPlan(
-              ViewCatalyst.meta.getViewLogicalPlan(targetViewName).get,
-              ViewCatalyst.meta.getViewCreateLogicalPlan(targetViewName).get))
-          case None => None
-        }
-
-      case None => None
-    }
-    viewPlan
-  }
-
-
-  /**
-    * query: select * from a,b where a.name=b.name and a.name2="jack" and b.jack="wow";
-    * view: a_view= select * from a,b where a.name=b.name and a.name2="jack" ;
-    * target: select * from a_view where  b.jack="wow"
-    *
-    * step 0: tables equal check
-    * step 1: View equivalence classes:
-    * query: PE:{a.name,b.name}
-    * NPE: {a.name2="jack"} {b.jack="wow"}
-    * view: PE: {a.name,b.name},NPE: {a.name2="jack"}
-    *
-    * step2 QPE < VPE, and QNPE < VNPE. We should normalize the PE make sure a=b equal to b=a, and
-    * compare the NPE with Range Check, the others just check exactly
-    *
-    * step3: output columns check
-    *
-    * @param plan
-    * @return
-    */
   override def rewrite(plan: LogicalPlan): LogicalPlan = {
     val targetViewPlanOption = fetchView(plan)
     if (!targetViewPlanOption.isDefined) return plan
@@ -75,6 +23,12 @@ class WithoutJoinGroupRule extends RewriteMatchRule {
     var queryProjectList: Seq[Expression] = Seq()
     var viewProjectList: Seq[Expression] = Seq()
 
+    var queryGroupingExpressions: Seq[Expression] = Seq()
+    var viewGroupingExpressions: Seq[Expression] = Seq()
+
+    var queryAggregateExpressions: Seq[Expression] = Seq()
+    var viewAggregateExpressions: Seq[Expression] = Seq()
+
     // check projectList and where condition
     normalizePlan(plan) match {
       case Project(projectList, Filter(condition, _)) =>
@@ -82,6 +36,9 @@ class WithoutJoinGroupRule extends RewriteMatchRule {
         queryProjectList = projectList
       case Project(projectList, _) =>
         queryProjectList = projectList
+      case Aggregate(groupingExpressions, aggregateExpressions, _) =>
+        queryGroupingExpressions = groupingExpressions
+        queryAggregateExpressions = aggregateExpressions
     }
 
     normalizePlan(targetViewPlan.viewCreateLogicalPlan) match {
@@ -90,21 +47,28 @@ class WithoutJoinGroupRule extends RewriteMatchRule {
         viewProjectList = projectList
       case Project(projectList, _) =>
         queryProjectList = projectList
+      case Aggregate(groupingExpressions, aggregateExpressions, _) =>
+        viewGroupingExpressions = groupingExpressions
+        viewAggregateExpressions = aggregateExpressions
     }
 
     /**
       * Three match/rewrite steps:
       *   1. Predicate
-      *   2. Project
-      *   3. Table(View)
+      *   2. GroupBy
+      *   3. Project
+      *   4. Table(View)
       */
     val pipeline = ArrayBuffer[PipelineItemExecutor]()
-    
+
 
     val predicateMatcher = new PredicateMatcher(targetViewPlan, viewProjectList, queryConjunctivePredicates, viewConjunctivePredicates)
     val predicateRewrite = new PredicateRewrite(targetViewPlan)
 
     pipeline += PipelineItemExecutor(predicateMatcher, predicateRewrite)
+
+    val groupByMatcher = new GroupByMatcher(targetViewPlan, viewAggregateExpressions, queryGroupingExpressions, viewGroupingExpressions)
+    val groupByRewrite = new GroupByRewrite(targetViewPlan)
 
 
     val projectMatcher = new ProjectMatcher(targetViewPlan, queryProjectList, viewProjectList)
@@ -124,8 +88,10 @@ class WithoutJoinGroupRule extends RewriteMatchRule {
       */
     LogicalPlanRewritePipeline(pipeline).rewrite(plan)
 
+
   }
-
-
 }
 
+object WithoutJoinRule {
+  def apply: WithoutJoinRule = new WithoutJoinRule()
+}

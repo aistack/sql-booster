@@ -3,16 +3,13 @@ package org.apache.spark.sql.catalyst
 
 import org.apache.spark.SparkFunSuite
 import org.apache.spark.sql._
-import org.apache.spark.sql.catalyst.catalog.HiveTableRelation
 import org.apache.spark.sql.catalyst.dsl.expressions._
 import org.apache.spark.sql.catalyst.dsl.plans._
 import org.apache.spark.sql.catalyst.expressions.{Expression, PredicateHelper}
 import org.apache.spark.sql.catalyst.optimizer._
-import org.apache.spark.sql.catalyst.optimizer.rewrite.rule.{RewritedLeafLogicalPlan, RewritedLogicalPlan}
 import org.apache.spark.sql.catalyst.plans.PlanTest
-import org.apache.spark.sql.catalyst.plans.logical.{Filter, LocalRelation, LogicalPlan, SubqueryAlias}
+import org.apache.spark.sql.catalyst.plans.logical.{Filter, LocalRelation, LogicalPlan}
 import org.apache.spark.sql.catalyst.rules.RuleExecutor
-import org.apache.spark.sql.execution.datasources.LogicalRelation
 import org.apache.spark.sql.test.SharedSQLContext
 import org.apache.spark.sql.types.StructType
 import tech.mlsql.schema.parser.SparkSimpleSchemaParser
@@ -122,24 +119,43 @@ class WholeTestSuite extends SparkFunSuite {
     }
 
     withSession(extension) { spark =>
-      ViewCatalyst.createViewCatalyst(Option(spark))
+      ViewCatalyst.createViewCatalyst()
 
+      spark.sql("select 1 as a, 2 as b,3 as c").write.mode(SaveMode.Overwrite).parquet("/tmp/table1")
+      spark.sql("select 1 as a1, 2 as b1,3 as c1").write.mode(SaveMode.Overwrite).parquet("/tmp/table2")
 
-      def createTable(name: String, schema: String) = {
-        val df = spark.createDataFrame(spark.sparkContext.emptyRDD[Row], SparkSimpleSchemaParser.parse(schema).asInstanceOf[StructType])
-        df.createOrReplaceTempView(name)
-      }
+      val table1 = spark.read.parquet("/tmp/table1")
+      table1.createOrReplaceTempView("table1")
+      val table2 = spark.read.parquet("/tmp/table2")
+      table2.createOrReplaceTempView("table2")
 
-      createTable("at", "st(field(a,string),field(b,string))")
-      createTable("bt", "st(field(a1,string),field(b1,string))")
+      spark.sql("select a,b,c from table1 where a=1").write.mode(SaveMode.Overwrite).parquet("/tmp/viewTable1")
+      val viewTable1 = spark.read.parquet("/tmp/viewTable1").select("*")
+      val createViewTable1 = spark.sql("select a,b,c from table1 where a=1")
 
-      ViewCatalyst.meta.register("ct", """ select * from at where a="jack" """)
-      val lp = spark.sql(""" select * from at where a="jack" and b="wow" """).queryExecution.optimizedPlan
-      val analyzed = spark.sql(""" select * from at where a="jack" and b="wow" """).queryExecution.analyzed
-      //      println(analyzed)
-      //      println(new LogicalPlanSQL(analyzed, new BasicSQLDialect).toSQL)
+      ViewCatalyst.meta.registerFromLogicalPlan("viewTable1", viewTable1.logicalPlan, createViewTable1.logicalPlan)
+
+      val analyzed = spark.sql(""" select a,b from table1 where a=1 and b=2 """).queryExecution.analyzed
+
       val optimized = OptimizeRewrite.execute(analyzed)
       println(optimized)
+
+      spark.sql("select a,count(*) as total,count(b) as b_c from table1 where a=1 group by a").write.mode(SaveMode.Overwrite).parquet("/tmp/viewTable2")
+      val viewTable2 = spark.read.parquet("/tmp/viewTable2").select("*")
+      val createViewTable2 = spark.sql("select a,count(*) as total,count(b) as b_c from table1 where a=1 group by a")
+
+      ViewCatalyst.meta.registerFromLogicalPlan("viewTable2", viewTable2.logicalPlan, createViewTable2.logicalPlan)
+
+      val analyzed2 = spark.sql(""" select a,count(*) as total,count(c) as c_c from table1 where a=1 group by a,b """).queryExecution.analyzed
+      println(analyzed2)
+      //      val optimized2 = OptimizeRewrite.execute(analyzed2)
+      //      println(optimized2)
+
+      //      println(analyzed)
+      //      println(new LogicalPlanSQL(analyzed, new BasicSQLDialect).toSQL)
+      //
+      //      val analyzed2 = spark.sql(""" select sum(c)/kcount as k from (select a,count(*) as kcount,a as b,1 as c from at group by a) group by kcount  """).queryExecution.analyzed
+      //      println(analyzed2)
 
     }
   }

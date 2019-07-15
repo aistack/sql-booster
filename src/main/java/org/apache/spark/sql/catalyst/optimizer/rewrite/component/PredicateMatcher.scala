@@ -1,7 +1,7 @@
 package org.apache.spark.sql.catalyst.optimizer.rewrite.component
 
 import org.apache.spark.sql.catalyst.expressions.{EqualNullSafe, EqualTo, Expression, GreaterThan, GreaterThanOrEqual, LessThan, LessThanOrEqual, Literal}
-import org.apache.spark.sql.catalyst.optimizer.rewrite.rule.{CompensationExpressions, ExpressionMatcher}
+import org.apache.spark.sql.catalyst.optimizer.rewrite.rule.{CompensationExpressions, ExpressionMatcher, ViewLogicalPlan}
 import org.apache.spark.sql.types._
 
 import scala.collection.mutable.ArrayBuffer
@@ -20,7 +20,9 @@ import scala.collection.mutable.ArrayBuffer
   *
   *
   */
-class PredicateMatcher(queryConjunctivePredicates: Seq[Expression],
+class PredicateMatcher(viewLogicalPlan: ViewLogicalPlan,
+                       viewProjectList: Seq[Expression],
+                       queryConjunctivePredicates: Seq[Expression],
                        viewConjunctivePredicates: Seq[Expression]
                       ) extends ExpressionMatcher {
 
@@ -78,6 +80,14 @@ class PredicateMatcher(queryConjunctivePredicates: Seq[Expression],
     val queryResidual = extractResidualConditions(queryConjunctivePredicates)
     if (!isSubSetOf(viewResidual, queryResidual)) return DEFAULT
     compensationCond ++= subset[Expression](queryResidual, viewResidual)
+
+    // make sure all attributeReference in compensationCond is also in output of view
+    // we get all columns without applied any function in projectList of viewCreateLogicalPlan
+    val viewAttrs = extractAttributeReferenceFromFirstLevel(viewProjectList)
+
+    val compensationCondAllInViewProjectList = isSubSetOf(compensationCond.flatMap(extractAttributeReference), viewAttrs)
+
+    if (!compensationCondAllInViewProjectList) return DEFAULT
 
     // return the compensation expressions
     CompensationExpressions(true, compensationCond)

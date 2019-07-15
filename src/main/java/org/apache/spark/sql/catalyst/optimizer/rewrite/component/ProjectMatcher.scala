@@ -2,12 +2,12 @@ package org.apache.spark.sql.catalyst.optimizer.rewrite.component
 
 import org.apache.spark.sql.catalyst.expressions.Expression
 import org.apache.spark.sql.catalyst.optimizer.rewrite.component.util.{ExpressionIntersectResp, ExpressionSemanticEquals}
-import org.apache.spark.sql.catalyst.optimizer.rewrite.rule.{CompensationExpressions, ExpressionMatcher}
+import org.apache.spark.sql.catalyst.optimizer.rewrite.rule.{CompensationExpressions, ExpressionMatcher, ViewLogicalPlan}
 
 /**
   * 2019-07-14 WilliamZhu(allwefantasy@gmail.com)
   */
-class ProjectMatcher(query: Seq[Expression], view: Seq[Expression]) extends ExpressionMatcher {
+class ProjectMatcher(viewLogicalPlan: ViewLogicalPlan, query: Seq[Expression], view: Seq[Expression]) extends ExpressionMatcher {
   /**
     *
     * @param query the project expression list in query
@@ -22,8 +22,8 @@ class ProjectMatcher(query: Seq[Expression], view: Seq[Expression]) extends Expr
 
     val ExpressionIntersectResp(queryLeft, viewLeft, _) = ExpressionSemanticEquals.process(query, view)
     // for now, we must make sure the queryLeft's columns(not alias) all in viewLeft.columns(not alias)
-    val queryColumns = queryLeft.flatMap(extractLeafExpression)
-    val viewColumns = viewLeft.flatMap(extractLeafExpression)
+    val queryColumns = queryLeft.flatMap(extractAttributeReference)
+    val viewColumns = viewLeft.flatMap(extractAttributeReference)
 
     val ExpressionIntersectResp(queryColumnsLeft, viewColumnsLeft, _) = ExpressionSemanticEquals.process(queryColumns, viewColumns)
     if (queryColumnsLeft.size > 0) return DEFAULT

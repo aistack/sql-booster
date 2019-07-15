@@ -5,11 +5,29 @@ import org.apache.spark.sql.catalyst.expressions.{Attribute, Expression}
 import org.apache.spark.sql.catalyst.optimizer.RewriteHelper
 import org.apache.spark.sql.catalyst.plans.logical.LogicalPlan
 
+
 /**
-  * 2019-07-14 WilliamZhu(allwefantasy@gmail.com)
+  * This is entry point of Plan rewrite.
+  * Every Rewrite Rule contains a LogicalPlanRewritePipeline which is composed by a bunch of PipelineItemExecutor.
+  *
+  * PipelineItemExecutor contains:
+  *
+  * 1. A ExpressionMatcher, check where we can rewrite some part of SQL, and if we can, how to compensate expressions.
+  * 2. A LogicalPlanRewrite, do the logical plan rewrite and return a new plan.
+  *
+  * For example:
+  *
+  * [[WithoutJoinGroupRule]] is a RewriteMatchRule, it is designed for the SQL like `select * from a where m='yes'` which
+  * without agg,groupby and join.
+  *
+  * WithoutJoinGroupRule have three items in PipelineItemExecutor:
+  *
+  * 1. Project Matcher/Rewriter
+  * 2. Predicate Matcher/Rewriter
+  * 3. Table(View) Matcher/Rewriter
   */
 trait RewriteMatchRule extends RewriteHelper {
-  def fetchView(plan: LogicalPlan): Option[LogicalPlan]
+  def fetchView(plan: LogicalPlan): Option[ViewLogicalPlan]
 
   def rewrite(plan: LogicalPlan): LogicalPlan
 }
@@ -42,8 +60,20 @@ trait ExpressionMatcher extends MatchOrRewrite with ExpressionMatcherHelper {
 
 trait ExpressionMatcherHelper extends MatchOrRewrite with RewriteHelper {
   def isSubSetOf(e1: Seq[Expression], e2: Seq[Expression]) = {
+    e1.map { item1 =>
+      e2.map { item2 =>
+        if (item2.semanticEquals(item1)) 1 else 0
+      }.sum
+    }.sum == e1.size
+  }
+
+  def isSubSetOfWithOrder(e1: Seq[Expression], e2: Seq[Expression]) = {
     val zipCount = Math.min(e1.size, e2.size)
-    (0 until zipCount).map { index => if (e1(index).semanticEquals(e2(index))) 0 else 1 }.sum == 0
+    (0 until zipCount).map { index =>
+      if (e1(index).semanticEquals(e2(index)))
+        0
+      else 1
+    }.sum == 0
   }
 
   def subset[T](e1: Seq[T], e2: Seq[T]) = {
@@ -105,5 +135,7 @@ case class RewritedLeafLogicalPlan(inner: LogicalPlan) extends LogicalPlan {
 
   override def children: Seq[LogicalPlan] = Seq()
 }
+
+case class ViewLogicalPlan(tableLogicalPlan: LogicalPlan, viewCreateLogicalPlan: LogicalPlan)
 
 
