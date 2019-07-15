@@ -1,21 +1,75 @@
 package org.apache.spark.sql.catalyst.optimizer.rewrite.rule
 
 import org.apache.spark.sql.catalyst.expressions.Expression
-import org.apache.spark.sql.catalyst.optimizer.rewrite.component.rewrite.{GroupByRewrite, PredicateRewrite, ProjectRewrite, TableOrViewRewrite}
-import org.apache.spark.sql.catalyst.optimizer.rewrite.component.{GroupByMatcher, PredicateMatcher, ProjectMatcher, TableNonOpMatcher}
-import org.apache.spark.sql.catalyst.plans.logical.{Aggregate, Filter, LogicalPlan, Project}
+import org.apache.spark.sql.catalyst.optimizer.rewrite.component.rewrite.{AggRewrite, GroupByRewrite, PredicateRewrite, TableOrViewRewrite}
+import org.apache.spark.sql.catalyst.optimizer.rewrite.component.{AggMatcher, GroupByMatcher, PredicateMatcher, TableNonOpMatcher}
+import org.apache.spark.sql.catalyst.plans.logical._
+import tech.mlsql.sqlbooster.meta.ViewCatalyst
 
 import scala.collection.mutable.ArrayBuffer
 
 /**
   * 2019-07-15 WilliamZhu(allwefantasy@gmail.com)
   */
-class WithoutJoinRule extends WithoutJoinGroupRule {
+class WithoutJoinRule extends RewriteMatchRule {
+
+
+  override def fetchView(plan: LogicalPlan): Seq[ViewLogicalPlan] = {
+    var isJoinExists = false
+    plan transformDown {
+      case a@Join(_, _, _, _) =>
+        isJoinExists = true
+        a
+    }
+    if (isJoinExists) return Seq()
+
+    val tables = extractTablesFromPlan(plan)
+    if (tables.size == 0) return Seq()
+    val table = tables.head
+    val viewPlan = ViewCatalyst.meta.getCandinateViewsByTable(table) match {
+      case Some(viewNames) =>
+        viewNames.filter { viewName =>
+          ViewCatalyst.meta.getViewCreateLogicalPlan(viewName) match {
+            case Some(viewLogicalPlan) =>
+              extractTablesFromPlan(viewLogicalPlan).toSet == Set(table)
+            case None => false
+          }
+        }.map { targetViewName =>
+          ViewLogicalPlan(
+            ViewCatalyst.meta.getViewLogicalPlan(targetViewName).get,
+            ViewCatalyst.meta.getViewCreateLogicalPlan(targetViewName).get)
+        }.toSeq
+      case None => Seq()
+
+
+    }
+    viewPlan
+  }
 
   override def rewrite(plan: LogicalPlan): LogicalPlan = {
     val targetViewPlanOption = fetchView(plan)
-    if (!targetViewPlanOption.isDefined) return plan
-    val targetViewPlan = targetViewPlanOption.get
+    if (targetViewPlanOption.isEmpty) return plan
+
+    var shouldBreak = false
+    var finalPlan = RewritedLogicalPlan(plan, true)
+
+    targetViewPlanOption.foreach { targetViewPlan =>
+      if (!shouldBreak) {
+        val res = _rewrite(plan, targetViewPlan)
+        res match {
+          case a@RewritedLogicalPlan(_, true) =>
+            finalPlan = a
+          case a@RewritedLogicalPlan(_, false) =>
+            finalPlan = a
+            shouldBreak = true
+        }
+      }
+    }
+    finalPlan
+  }
+
+  def _rewrite(plan: LogicalPlan, targetViewPlan: ViewLogicalPlan): LogicalPlan = {
+
 
     var queryConjunctivePredicates: Seq[Expression] = Seq()
     var viewConjunctivePredicates: Seq[Expression] = Seq()
@@ -67,15 +121,15 @@ class WithoutJoinRule extends WithoutJoinGroupRule {
 
     pipeline += PipelineItemExecutor(predicateMatcher, predicateRewrite)
 
-    val groupByMatcher = new GroupByMatcher(targetViewPlan, viewAggregateExpressions, queryGroupingExpressions, viewGroupingExpressions)
-    val groupByRewrite = new GroupByRewrite(targetViewPlan)
+    val groupMatcher = new GroupByMatcher(targetViewPlan, viewAggregateExpressions, queryGroupingExpressions, viewGroupingExpressions)
+    val groupRewrite = new GroupByRewrite(targetViewPlan)
 
+    pipeline += PipelineItemExecutor(groupMatcher, groupRewrite)
 
-    val projectMatcher = new ProjectMatcher(targetViewPlan, queryProjectList, viewProjectList)
-    val projectRewrite = new ProjectRewrite(targetViewPlan)
+    val aggMatcher = new AggMatcher(targetViewPlan, queryAggregateExpressions, viewAggregateExpressions)
+    val aggRewrite = new AggRewrite(targetViewPlan)
 
-    pipeline += PipelineItemExecutor(projectMatcher, projectRewrite)
-
+    pipeline += PipelineItemExecutor(aggMatcher, aggRewrite)
 
     val tableMatcher = new TableNonOpMatcher()
     val tableRewrite = new TableOrViewRewrite(targetViewPlan)

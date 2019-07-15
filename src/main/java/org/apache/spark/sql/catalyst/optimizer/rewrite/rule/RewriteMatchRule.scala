@@ -27,9 +27,11 @@ import org.apache.spark.sql.catalyst.plans.logical.LogicalPlan
   * 3. Table(View) Matcher/Rewriter
   */
 trait RewriteMatchRule extends RewriteHelper {
-  def fetchView(plan: LogicalPlan): Option[ViewLogicalPlan]
+  def fetchView(plan: LogicalPlan): Seq[ViewLogicalPlan]
 
   def rewrite(plan: LogicalPlan): LogicalPlan
+
+
 }
 
 trait MatchOrRewrite {}

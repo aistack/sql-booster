@@ -1,7 +1,7 @@
 package org.apache.spark.sql.catalyst.optimizer
 
 import org.apache.spark.sql.catalyst.expressions._
-import org.apache.spark.sql.catalyst.optimizer.rewrite.rule.{RewritedLogicalPlan, WithoutJoinGroupRule}
+import org.apache.spark.sql.catalyst.optimizer.rewrite.rule.{RewriteMatchRule, RewritedLogicalPlan, WithoutJoinGroupRule, WithoutJoinRule}
 import org.apache.spark.sql.catalyst.plans.logical._
 import org.apache.spark.sql.catalyst.rules.Rule
 
@@ -33,8 +33,9 @@ import scala.collection.mutable.ArrayBuffer
   *
   */
 object RewriteTableToViews extends Rule[LogicalPlan] with PredicateHelper {
-  val batches = ArrayBuffer[WithoutJoinGroupRule](
-    WithoutJoinGroupRule.apply
+  val batches = ArrayBuffer[RewriteMatchRule](
+    WithoutJoinGroupRule.apply,
+    WithoutJoinRule.apply
   )
 
   def apply(plan: LogicalPlan): LogicalPlan = {
@@ -54,6 +55,7 @@ object RewriteTableToViews extends Rule[LogicalPlan] with PredicateHelper {
     batches.foreach { rewriter =>
       rewritePlan = rewriter.rewrite(rewritePlan)
     }
+
     rewritePlan match {
       case RewritedLogicalPlan(_, true) => plan
       case RewritedLogicalPlan(inner, false) => inner
@@ -70,10 +72,10 @@ object RewriteTableToViews extends Rule[LogicalPlan] with PredicateHelper {
     */
   private def isSPJG(plan: LogicalPlan) = {
     plan match {
-
       case p@Project(_, Join(_, _, _, _)) => true
       case p@Project(_, Filter(_, Join(_, _, _, _))) => true
       case p@Aggregate(_, _, Filter(_, Join(_, _, _, _))) => true
+      case p@Aggregate(_, _, Filter(_, _)) => true
       case p@Project(_, Filter(_, _)) => true
       case p@Aggregate(_, _, Join(_, _, _, _)) => true
       case p@Filter(_, _) => true

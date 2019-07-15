@@ -33,23 +33,20 @@ class GroupByMatcher(viewLogicalPlan: ViewLogicalPlan, viewAggregateExpressions:
       * WHERE deptno > 10
       * GROUP BY deptno
       *
-      * then view isSubSet of query. Please take care of the order in group by.
+      * then  query  isSubSet of view . Please take care of the order in group by.
       */
-    if (view.size > query.size) return DEFAULT
-
-    val (queryLeft, viewLeft, common) = extractTheSameExpressionsOrder(view, query)
-    if (viewLeft.size > 0) return DEFAULT
-    if (common.size != view.size) return DEFAULT
+    if (query.size > view.size) return DEFAULT
+    if (!isSubSetOf(query, view)) return DEFAULT
 
     // again make sure the columns in queryLeft is also in view project/agg
 
     val viewAttrs = extractAttributeReferenceFromFirstLevel(viewAggregateExpressions)
 
-    val compensationCondAllInViewProjectList = isSubSetOf(queryLeft.flatMap(extractAttributeReference), viewAttrs)
+    val compensationCondAllInViewProjectList = isSubSetOf(query.flatMap(extractAttributeReference), viewAttrs)
 
     if (!compensationCondAllInViewProjectList) return DEFAULT
 
-    CompensationExpressions(true, queryLeft)
+    CompensationExpressions(true, query)
 
   }
 

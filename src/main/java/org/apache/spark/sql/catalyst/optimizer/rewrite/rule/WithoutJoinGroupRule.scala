@@ -3,7 +3,7 @@ package org.apache.spark.sql.catalyst.optimizer.rewrite.rule
 import org.apache.spark.sql.catalyst.expressions.Expression
 import org.apache.spark.sql.catalyst.optimizer.rewrite.component.rewrite.{PredicateRewrite, ProjectRewrite, TableOrViewRewrite}
 import org.apache.spark.sql.catalyst.optimizer.rewrite.component.{PredicateMatcher, ProjectMatcher, TableNonOpMatcher}
-import org.apache.spark.sql.catalyst.plans.logical.{Filter, LogicalPlan, Project}
+import org.apache.spark.sql.catalyst.plans.logical._
 import tech.mlsql.sqlbooster.meta.ViewCatalyst
 
 import scala.collection.mutable.ArrayBuffer
@@ -17,30 +17,41 @@ object WithoutJoinGroupRule {
 
 
 class WithoutJoinGroupRule extends RewriteMatchRule {
-  override def fetchView(plan: LogicalPlan): Option[ViewLogicalPlan] = {
+  override def fetchView(plan: LogicalPlan): Seq[ViewLogicalPlan] = {
+    var isJoinOrAggExists = false
+    plan transformDown {
+      case a@Join(_, _, _, _) =>
+        isJoinOrAggExists = true
+        a
+      case a@Aggregate(_, _, _) =>
+        isJoinOrAggExists = true
+        a
+    }
+
+    if (isJoinOrAggExists) return Seq()
+
     val tables = extractTablesFromPlan(plan)
-    if (tables.size == 0) return None
+    if (tables.size == 0) return Seq()
     val table = tables.head
     val viewPlan = ViewCatalyst.meta.getCandinateViewsByTable(table) match {
       case Some(viewNames) =>
-        val targetViewNameOption = viewNames.filter { viewName =>
+        viewNames.filter { viewName =>
           ViewCatalyst.meta.getViewCreateLogicalPlan(viewName) match {
             case Some(viewLogicalPlan) =>
               extractTablesFromPlan(viewLogicalPlan).toSet == Set(table)
             case None => false
           }
-        }.headOption
+        }.map { targetViewName =>
+          ViewLogicalPlan(
+            ViewCatalyst.meta.getViewLogicalPlan(targetViewName).get,
+            ViewCatalyst.meta.getViewCreateLogicalPlan(targetViewName).get)
+        }.toSeq
+      case None => Seq()
 
-        targetViewNameOption match {
-          case Some(targetViewName) =>
-            Option(ViewLogicalPlan(
-              ViewCatalyst.meta.getViewLogicalPlan(targetViewName).get,
-              ViewCatalyst.meta.getViewCreateLogicalPlan(targetViewName).get))
-          case None => None
-        }
 
-      case None => None
     }
+
+
     viewPlan
   }
 
@@ -66,8 +77,27 @@ class WithoutJoinGroupRule extends RewriteMatchRule {
     */
   override def rewrite(plan: LogicalPlan): LogicalPlan = {
     val targetViewPlanOption = fetchView(plan)
-    if (!targetViewPlanOption.isDefined) return plan
-    val targetViewPlan = targetViewPlanOption.get
+    if (targetViewPlanOption.isEmpty) return plan
+
+    var shouldBreak = false
+    var finalPlan = RewritedLogicalPlan(plan, true)
+
+    targetViewPlanOption.foreach { targetViewPlan =>
+      if (!shouldBreak) {
+        val res = _rewrite(plan, targetViewPlan)
+        res match {
+          case a@RewritedLogicalPlan(_, true) =>
+            finalPlan = a
+          case a@RewritedLogicalPlan(_, false) =>
+            finalPlan = a
+            shouldBreak = true
+        }
+      }
+    }
+    finalPlan
+  }
+
+  def _rewrite(plan: LogicalPlan, targetViewPlan: ViewLogicalPlan): LogicalPlan = {
 
     var queryConjunctivePredicates: Seq[Expression] = Seq()
     var viewConjunctivePredicates: Seq[Expression] = Seq()
@@ -99,7 +129,7 @@ class WithoutJoinGroupRule extends RewriteMatchRule {
       *   3. Table(View)
       */
     val pipeline = ArrayBuffer[PipelineItemExecutor]()
-    
+
 
     val predicateMatcher = new PredicateMatcher(targetViewPlan, viewProjectList, queryConjunctivePredicates, viewConjunctivePredicates)
     val predicateRewrite = new PredicateRewrite(targetViewPlan)

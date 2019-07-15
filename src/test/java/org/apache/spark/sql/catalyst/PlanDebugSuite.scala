@@ -137,19 +137,20 @@ class WholeTestSuite extends SparkFunSuite {
 
       val analyzed = spark.sql(""" select a,b from table1 where a=1 and b=2 """).queryExecution.analyzed
 
-      val optimized = OptimizeRewrite.execute(analyzed)
-      println(optimized)
+      //      val optimized = OptimizeRewrite.execute(analyzed)
+      //      println(optimized)
 
-      spark.sql("select a,count(*) as total,count(b) as b_c from table1 where a=1 group by a").write.mode(SaveMode.Overwrite).parquet("/tmp/viewTable2")
+      spark.sql("select a,b,count(*) as total,sum(b) as wow from table1 where a=1 group by a,b").write.mode(SaveMode.Overwrite).parquet("/tmp/viewTable2")
       val viewTable2 = spark.read.parquet("/tmp/viewTable2").select("*")
-      val createViewTable2 = spark.sql("select a,count(*) as total,count(b) as b_c from table1 where a=1 group by a")
+      val createViewTable2 = spark.sql("select a,b,count(*) as total,sum(b) as wow from table1 where a=1 group by a,b")
 
       ViewCatalyst.meta.registerFromLogicalPlan("viewTable2", viewTable2.logicalPlan, createViewTable2.logicalPlan)
 
-      val analyzed2 = spark.sql(""" select a,count(*) as total,count(c) as c_c from table1 where a=1 group by a,b """).queryExecution.analyzed
-      println(analyzed2)
-      //      val optimized2 = OptimizeRewrite.execute(analyzed2)
-      //      println(optimized2)
+      val analyzed2 = spark.sql(""" select b,count(*) as jack,sum(b) as wow1 from table1 where a=1 group by b """).queryExecution.analyzed
+      println("before:" + analyzed2)
+
+      val optimized2 = OptimizeRewrite.execute(analyzed2)
+      println(optimized2)
 
       //      println(analyzed)
       //      println(new LogicalPlanSQL(analyzed, new BasicSQLDialect).toSQL)
