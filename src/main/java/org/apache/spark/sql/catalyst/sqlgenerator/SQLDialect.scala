@@ -22,6 +22,8 @@ trait SQLDialect {
 
   def relation(relation: LogicalRelation): String
 
+  def enableCanonicalize :Boolean
+
   def canHandle(url: String): Boolean
 
   def explainSQL(sql: String): String

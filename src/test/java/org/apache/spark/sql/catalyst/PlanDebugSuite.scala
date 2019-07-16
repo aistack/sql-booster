@@ -10,6 +10,7 @@ import org.apache.spark.sql.catalyst.optimizer._
 import org.apache.spark.sql.catalyst.plans.logical._
 import org.apache.spark.sql.catalyst.plans.{InnerLike, PlanTest}
 import org.apache.spark.sql.catalyst.rules.RuleExecutor
+import org.apache.spark.sql.catalyst.sqlgenerator.{BasicSQLDialect, LogicalPlanSQL}
 import org.apache.spark.sql.test.SharedSQLContext
 import org.apache.spark.sql.types.StructType
 import tech.mlsql.schema.parser.SparkSimpleSchemaParser
@@ -143,7 +144,7 @@ class WholeTestSuite extends SparkFunSuite {
       val viewTable1 = spark.read.parquet("/tmp/viewTable1").select("*")
       val createViewTable1 = spark.sql("select a,b,c from table1 where a=1")
 
-      ViewCatalyst.meta.registerFromLogicalPlan("viewTable1", viewTable1.logicalPlan, createViewTable1.logicalPlan)
+      ViewCatalyst.meta.registerMaterializedViewFromLogicalPlan("viewTable1", viewTable1.logicalPlan, createViewTable1.logicalPlan)
 
       val analyzed = spark.sql(""" select a,b from table1 where a=1 and b=2 """).queryExecution.analyzed
 
@@ -154,7 +155,7 @@ class WholeTestSuite extends SparkFunSuite {
       val viewTable2 = spark.read.parquet("/tmp/viewTable2").select("*")
       val createViewTable2 = spark.sql("select a,b,count(*) as total,sum(b) as wow from table1 where a=1 group by a,b")
 
-      ViewCatalyst.meta.registerFromLogicalPlan("viewTable2", viewTable2.logicalPlan, createViewTable2.logicalPlan)
+      ViewCatalyst.meta.registerMaterializedViewFromLogicalPlan("viewTable2", viewTable2.logicalPlan, createViewTable2.logicalPlan)
 
       val analyzed2 = spark.sql(""" select b,count(*) as jack,sum(b) as wow1 from table1 where a=1 group by b """).queryExecution.analyzed
       println("before:" + analyzed2)
@@ -203,8 +204,11 @@ class WholeTestSuite extends SparkFunSuite {
       val viewTable1 = spark.read.parquet("/tmp/viewTable1").select("*")
       val createViewTable1 = spark.sql(viewCreate)
 
-      ViewCatalyst.meta.registerFromLogicalPlan("viewTable1", viewTable1.logicalPlan, createViewTable1.logicalPlan)
+      ViewCatalyst.meta.registerMaterializedViewFromLogicalPlan("viewTable1", viewTable1.logicalPlan, createViewTable1.logicalPlan)
 
+      ViewCatalyst.meta.registerTableFromLogicalPlan("table1", table1.logicalPlan)
+      ViewCatalyst.meta.registerTableFromLogicalPlan("table2", table2.logicalPlan)
+      ViewCatalyst.meta.registerTableFromLogicalPlan("table3", table3.logicalPlan)
 
       val analyzed3 = spark.sql(
         """
@@ -214,12 +218,24 @@ class WholeTestSuite extends SparkFunSuite {
           |left join table3 on table2.b1=table3.b2
           |where table2.b1=2
         """.stripMargin).queryExecution.analyzed
+
+      val analyzed4 = spark.sql(
+        """
+          |select dj.a, dj.b,count(dj.c) from
+          |(select a,b,c from table1  left join (select * from table2 ) m on m.b1=table1.b) dj
+          |group by dj.a,dj.b
+        """.stripMargin).queryExecution.analyzed
+
+
+      // select a from viewTable1 where b1=2;
       val rewrite = OptimizeRewrite.execute(analyzed3)
       println(viewTable1.logicalPlan)
       println(rewrite)
       Dataset.ofRows(spark, analyzed3).show(100)
       Dataset.ofRows(spark, rewrite).show(100)
-      //println(new LogicalPlanSQL(rewrite, new BasicSQLDialect).toSQL)
+      //      println(new LogicalPlanSQL(rewrite, new BasicSQLDialect).toSQL)
+      println(analyzed3)
+      println(new LogicalPlanSQL(analyzed4, new BasicSQLDialect).toSQL)
       //println(spark.sql(""" select table1.a,table1.b from table1 left join table2 where table1.a=table2.b1 and table2.b1=2 """).queryExecution.optimizedPlan)
 
       //      println(analyzed3)

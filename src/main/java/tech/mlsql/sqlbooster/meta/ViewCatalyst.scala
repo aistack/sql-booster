@@ -22,8 +22,11 @@ class ViewCatalyst extends RewriteHelper {
   //table -> view
   private val tableToViews = new java.util.concurrent.ConcurrentHashMap[String, Set[String]]()
 
+  // simple meta data for LogicalPlanSQL
+  private val logicalPlanToTableName = new java.util.concurrent.ConcurrentHashMap[LogicalPlan, String]()
 
-  def registerFromLogicalPlan(name: String, tableLogicalPlan: LogicalPlan, createLP: LogicalPlan) = {
+
+  def registerMaterializedViewFromLogicalPlan(name: String, tableLogicalPlan: LogicalPlan, createLP: LogicalPlan) = {
 
     def pushToTableToViews(tableName: String) = {
       val items = tableToViews.asScala.getOrElse(tableName, Set[String]())
@@ -40,6 +43,12 @@ class ViewCatalyst extends RewriteHelper {
 
   }
 
+  def registerTableFromLogicalPlan(name: String, tableLogicalPlan: LogicalPlan) = {
+    logicalPlanToTableName.put(tableLogicalPlan, name)
+    this
+
+  }
+
 
   def getCandinateViewsByTable(tableName: String) = {
     tableToViews.asScala.get(tableName)
@@ -51,6 +60,14 @@ class ViewCatalyst extends RewriteHelper {
 
   def getViewCreateLogicalPlan(viewName: String) = {
     viewToCreateLogicalPlan.asScala.get(viewName)
+  }
+
+  def getViewNameByLogicalPlan(viewLP: LogicalPlan) = {
+    viewToLogicalPlan.asScala.filter(f => f._2 == viewLP).map(f => f._1).headOption
+  }
+
+  def getTableNameByLogicalPlan(viewLP: LogicalPlan) = {
+    logicalPlanToTableName.asScala.get(viewLP)
   }
 }
 

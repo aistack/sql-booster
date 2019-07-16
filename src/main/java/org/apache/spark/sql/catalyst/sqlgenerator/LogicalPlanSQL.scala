@@ -44,7 +44,7 @@ class LogicalPlanSQL(plan: LogicalPlan, dialect: SQLDialect) {
 
   def finalPlan(plan: LogicalPlan): LogicalPlan = {
     val realOutputNames: Seq[String] = plan.output.map(_.name)
-    val canonicalizedPlan = canonicalize(plan)
+    val canonicalizedPlan = if (dialect.enableCanonicalize) canonicalize(plan) else plan
     val canonicalizedToReal = canonicalizedPlan.output.zip(realOutputNames)
     val needRename = canonicalizedToReal.filter {
       case (attr, name) => attr.name != name
@@ -71,8 +71,18 @@ class LogicalPlanSQL(plan: LogicalPlan, dialect: SQLDialect) {
       val expression = p.projectList.map(expressionToSQL(_)).mkString(",")
       dialect.projectToSQL(p, isDistinct = false, child, expression)
     case SubqueryAlias(alias, child) =>
-      val childSql = logicalPlanToSQL(child)
-      dialect.subqueryAliasToSQL(alias.identifier, childSql)
+      // here we can reduce too much subquery
+      val tableName = child match {
+        case a@LogicalRelation(_, _, _, _) => dialect.relation(a)
+        case _ => null
+      }
+      if (tableName != null) {
+        tableName
+      } else {
+        val childSql = logicalPlanToSQL(child)
+        dialect.subqueryAliasToSQL(alias.identifier, childSql)
+      }
+
     case a: Aggregate =>
       aggregateToSQL(a)
     case w: Window =>
