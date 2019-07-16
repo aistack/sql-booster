@@ -1,7 +1,7 @@
 package org.apache.spark.sql.catalyst.optimizer
 
 import org.apache.spark.sql.catalyst.expressions._
-import org.apache.spark.sql.catalyst.optimizer.rewrite.rule.{RewriteMatchRule, RewritedLogicalPlan, WithoutJoinGroupRule, WithoutJoinRule}
+import org.apache.spark.sql.catalyst.optimizer.rewrite.rule._
 import org.apache.spark.sql.catalyst.plans.logical._
 import org.apache.spark.sql.catalyst.rules.Rule
 
@@ -35,7 +35,8 @@ import scala.collection.mutable.ArrayBuffer
 object RewriteTableToViews extends Rule[LogicalPlan] with PredicateHelper {
   val batches = ArrayBuffer[RewriteMatchRule](
     WithoutJoinGroupRule.apply,
-    WithoutJoinRule.apply
+    WithoutJoinRule.apply,
+    SPGJRule.apply
   )
 
   def apply(plan: LogicalPlan): LogicalPlan = {

@@ -5,10 +5,10 @@ import org.apache.spark.SparkFunSuite
 import org.apache.spark.sql._
 import org.apache.spark.sql.catalyst.dsl.expressions._
 import org.apache.spark.sql.catalyst.dsl.plans._
-import org.apache.spark.sql.catalyst.expressions.{Expression, PredicateHelper}
+import org.apache.spark.sql.catalyst.expressions.{And, Attribute, Expression, PredicateHelper}
 import org.apache.spark.sql.catalyst.optimizer._
-import org.apache.spark.sql.catalyst.plans.PlanTest
-import org.apache.spark.sql.catalyst.plans.logical.{Filter, LocalRelation, LogicalPlan}
+import org.apache.spark.sql.catalyst.plans.logical._
+import org.apache.spark.sql.catalyst.plans.{InnerLike, PlanTest}
 import org.apache.spark.sql.catalyst.rules.RuleExecutor
 import org.apache.spark.sql.test.SharedSQLContext
 import org.apache.spark.sql.types.StructType
@@ -93,6 +93,12 @@ object OptimizeRewrite extends RuleExecutor[LogicalPlan] {
       RewriteTableToViews) :: Nil
 }
 
+object DefaultOptimizeRewrite extends RuleExecutor[LogicalPlan] {
+  val batches =
+    Batch("Join Reorder", FixedPoint(100),
+      EliminateOuterJoin, PushPredicateThroughJoin) :: Nil
+}
+
 class WholeTestSuite extends SparkFunSuite {
 
 
@@ -123,11 +129,15 @@ class WholeTestSuite extends SparkFunSuite {
 
       spark.sql("select 1 as a, 2 as b,3 as c").write.mode(SaveMode.Overwrite).parquet("/tmp/table1")
       spark.sql("select 1 as a1, 2 as b1,3 as c1").write.mode(SaveMode.Overwrite).parquet("/tmp/table2")
+      spark.sql("select 1 as a2, 2 as b2,3 as c2").write.mode(SaveMode.Overwrite).parquet("/tmp/table3")
 
       val table1 = spark.read.parquet("/tmp/table1")
       table1.createOrReplaceTempView("table1")
       val table2 = spark.read.parquet("/tmp/table2")
       table2.createOrReplaceTempView("table2")
+
+      val table3 = spark.read.parquet("/tmp/table3")
+      table3.createOrReplaceTempView("table3")
 
       spark.sql("select a,b,c from table1 where a=1").write.mode(SaveMode.Overwrite).parquet("/tmp/viewTable1")
       val viewTable1 = spark.read.parquet("/tmp/viewTable1").select("*")
@@ -160,6 +170,88 @@ class WholeTestSuite extends SparkFunSuite {
 
     }
   }
+
+  test("mv2") {
+    val extension = create { extensions =>
+      //extensions.injectOptimizerRule(RewriteTableToView)
+    }
+
+    withSession(extension) { spark =>
+      ViewCatalyst.createViewCatalyst()
+
+      spark.sql("select 1 as a, 2 as b,3 as c").write.mode(SaveMode.Overwrite).parquet("/tmp/table1")
+      spark.sql("select 1 as a1, 2 as b1,3 as c1").write.mode(SaveMode.Overwrite).parquet("/tmp/table2")
+      spark.sql("select 1 as a2, 2 as b2,3 as c2").write.mode(SaveMode.Overwrite).parquet("/tmp/table3")
+
+      val table1 = spark.read.parquet("/tmp/table1")
+      table1.createOrReplaceTempView("table1")
+      val table2 = spark.read.parquet("/tmp/table2")
+      table2.createOrReplaceTempView("table2")
+
+      val table3 = spark.read.parquet("/tmp/table3")
+      table3.createOrReplaceTempView("table3")
+
+      val viewCreate =
+        """
+          |select table1.a,table1.b,table2.b1
+          |from table1
+          |left join table2 on table1.a=table2.b1
+          |left join table3 on table2.b1=table3.b2
+        """.stripMargin
+
+      spark.sql(viewCreate).write.mode(SaveMode.Overwrite).parquet("/tmp/viewTable1")
+      val viewTable1 = spark.read.parquet("/tmp/viewTable1").select("*")
+      val createViewTable1 = spark.sql(viewCreate)
+
+      ViewCatalyst.meta.registerFromLogicalPlan("viewTable1", viewTable1.logicalPlan, createViewTable1.logicalPlan)
+
+
+      val analyzed3 = spark.sql(
+        """
+          |select table1.a
+          |from table1
+          |left join table2 on table1.a=table2.b1
+          |left join table3 on table2.b1=table3.b2
+          |where table2.b1=2
+        """.stripMargin).queryExecution.analyzed
+      val rewrite = OptimizeRewrite.execute(analyzed3)
+      println(viewTable1.logicalPlan)
+      println(rewrite)
+      Dataset.ofRows(spark, analyzed3).show(100)
+      Dataset.ofRows(spark, rewrite).show(100)
+      //println(new LogicalPlanSQL(rewrite, new BasicSQLDialect).toSQL)
+      //println(spark.sql(""" select table1.a,table1.b from table1 left join table2 where table1.a=table2.b1 and table2.b1=2 """).queryExecution.optimizedPlan)
+
+      //      println(analyzed3)
+      //      println(extractInnerJoins(analyzed2))
+
+
+    }
+  }
+
+  def extractInnerJoins(plan: LogicalPlan): (Seq[LogicalPlan], Set[Expression]) = {
+    plan match {
+      case Join(left, right, _: InnerLike, Some(cond)) =>
+        val (leftPlans, leftConditions) = extractInnerJoins(left)
+        val (rightPlans, rightConditions) = extractInnerJoins(right)
+        (leftPlans ++ rightPlans, splitConjunctivePredicates(cond).toSet ++
+          leftConditions ++ rightConditions)
+      case Project(projectList, j@Join(_, _, _: InnerLike, Some(cond)))
+        if projectList.forall(_.isInstanceOf[Attribute]) =>
+        extractInnerJoins(j)
+      case _ =>
+        (Seq(plan), Set())
+    }
+  }
+
+  def splitConjunctivePredicates(condition: Expression): Seq[Expression] = {
+    condition match {
+      case And(cond1, cond2) =>
+        splitConjunctivePredicates(cond1) ++ splitConjunctivePredicates(cond2)
+      case other => other :: Nil
+    }
+  }
+
 }
 
 class DFDebugSuite extends QueryTest with SharedSQLContext {

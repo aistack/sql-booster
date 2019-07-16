@@ -2,7 +2,7 @@ package org.apache.spark.sql.catalyst.optimizer.rewrite.component
 
 import org.apache.spark.sql.catalyst.expressions.aggregate.{AggregateExpression, Average, Count, Sum}
 import org.apache.spark.sql.catalyst.expressions.{Alias, Divide, Expression, Literal}
-import org.apache.spark.sql.catalyst.optimizer.rewrite.rule.{CompensationExpressions, ExpressionMatcher, ViewLogicalPlan}
+import org.apache.spark.sql.catalyst.optimizer.rewrite.rule.{CompensationExpressions, ExpressionMatcher, RewriteFail, ViewLogicalPlan}
 import org.apache.spark.sql.types.IntegerType
 
 import scala.collection.mutable.ArrayBuffer
@@ -39,7 +39,7 @@ class AggMatcher(viewLogicalPlan: ViewLogicalPlan,
     val queryCountStar = getCountStartList(query)
     val viewCountStar = getCountStartList(view)
 
-    if (queryCountStar.size > 0 && viewCountStar == 0) return DEFAULT
+    if (queryCountStar.size > 0 && viewCountStar == 0) return RewriteFail.AGG_NUMBER_UNMATCH(this)
 
     val viewProjectOrAggList = viewLogicalPlan.tableLogicalPlan.output
 
@@ -84,7 +84,7 @@ class AggMatcher(viewLogicalPlan: ViewLogicalPlan,
       }.sum
     }.sum >= exactlySame.size
 
-    if (!success) return DEFAULT
+    if (!success) return RewriteFail.AGG_COLUMNS_UNMATCH(this)
 
     var queryReplaceAgg = query
 
@@ -122,7 +122,7 @@ class AggMatcher(viewLogicalPlan: ViewLogicalPlan,
 
     val queryAvg = getAvgList(query)
 
-    if (queryAvg.size > 0 && viewCountStar == 0) return DEFAULT
+    if (queryAvg.size > 0 && viewCountStar == 0) return RewriteFail.AGG_VIEW_MISSING_COUNTING_STAR(this)
 
     var queryReplaceAvg = queryReplaceCountStar
 

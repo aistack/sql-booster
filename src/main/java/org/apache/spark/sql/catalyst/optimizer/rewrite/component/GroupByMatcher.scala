@@ -1,7 +1,7 @@
 package org.apache.spark.sql.catalyst.optimizer.rewrite.component
 
 import org.apache.spark.sql.catalyst.expressions.Expression
-import org.apache.spark.sql.catalyst.optimizer.rewrite.rule.{CompensationExpressions, ExpressionMatcher, ViewLogicalPlan}
+import org.apache.spark.sql.catalyst.optimizer.rewrite.rule.{CompensationExpressions, ExpressionMatcher, RewriteFail, ViewLogicalPlan}
 
 import scala.collection.mutable.ArrayBuffer
 
@@ -35,8 +35,8 @@ class GroupByMatcher(viewLogicalPlan: ViewLogicalPlan, viewAggregateExpressions:
       *
       * then  query  isSubSet of view . Please take care of the order in group by.
       */
-    if (query.size > view.size) return DEFAULT
-    if (!isSubSetOf(query, view)) return DEFAULT
+    if (query.size > view.size) return RewriteFail.GROUP_BY_SIZE_UNMATCH(this)
+    if (!isSubSetOf(query, view)) return RewriteFail.GROUP_BY_SIZE_UNMATCH(this)
 
     // again make sure the columns in queryLeft is also in view project/agg
 
@@ -44,7 +44,7 @@ class GroupByMatcher(viewLogicalPlan: ViewLogicalPlan, viewAggregateExpressions:
 
     val compensationCondAllInViewProjectList = isSubSetOf(query.flatMap(extractAttributeReference), viewAttrs)
 
-    if (!compensationCondAllInViewProjectList) return DEFAULT
+    if (!compensationCondAllInViewProjectList) return RewriteFail.GROUP_BY_COLUMNS_NOT_IN_VIEW_PROJECT_OR_AGG(this)
 
     CompensationExpressions(true, query)
 

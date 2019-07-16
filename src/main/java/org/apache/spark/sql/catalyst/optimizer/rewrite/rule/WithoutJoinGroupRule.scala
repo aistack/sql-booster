@@ -18,17 +18,9 @@ object WithoutJoinGroupRule {
 
 class WithoutJoinGroupRule extends RewriteMatchRule {
   override def fetchView(plan: LogicalPlan): Seq[ViewLogicalPlan] = {
-    var isJoinOrAggExists = false
-    plan transformDown {
-      case a@Join(_, _, _, _) =>
-        isJoinOrAggExists = true
-        a
-      case a@Aggregate(_, _, _) =>
-        isJoinOrAggExists = true
-        a
-    }
 
-    if (isJoinOrAggExists) return Seq()
+
+    if (isAggExistsExists(plan) || isJoinExists(plan)) return Seq()
 
     val tables = extractTablesFromPlan(plan)
     if (tables.size == 0) return Seq()
@@ -119,7 +111,7 @@ class WithoutJoinGroupRule extends RewriteMatchRule {
         viewConjunctivePredicates = splitConjunctivePredicates(condition)
         viewProjectList = projectList
       case Project(projectList, _) =>
-        queryProjectList = projectList
+        viewProjectList = projectList
     }
 
     /**

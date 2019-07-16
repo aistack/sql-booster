@@ -1,7 +1,7 @@
 package org.apache.spark.sql.catalyst.optimizer.rewrite.component
 
 import org.apache.spark.sql.catalyst.expressions.{EqualNullSafe, EqualTo, Expression, GreaterThan, GreaterThanOrEqual, LessThan, LessThanOrEqual, Literal}
-import org.apache.spark.sql.catalyst.optimizer.rewrite.rule.{CompensationExpressions, ExpressionMatcher, ViewLogicalPlan}
+import org.apache.spark.sql.catalyst.optimizer.rewrite.rule.{CompensationExpressions, ExpressionMatcher, RewriteFail, ViewLogicalPlan}
 import org.apache.spark.sql.types._
 
 import scala.collection.mutable.ArrayBuffer
@@ -30,14 +30,14 @@ class PredicateMatcher(viewLogicalPlan: ViewLogicalPlan,
 
     val compensationCond = ArrayBuffer[Expression]()
 
-    if (viewConjunctivePredicates.size > queryConjunctivePredicates.size) return DEFAULT
+    if (viewConjunctivePredicates.size > queryConjunctivePredicates.size) return RewriteFail.PREDICATE_UNMATCH(this)
 
     // equal expression compare
     val viewEqual = extractEqualConditions(viewConjunctivePredicates)
     val queryEqual = extractEqualConditions(queryConjunctivePredicates)
 
     // if viewEqual are not subset of queryEqual, then it will not match.
-    if (!isSubSetOf(viewEqual, queryEqual)) return DEFAULT
+    if (!isSubSetOf(viewEqual, queryEqual)) return RewriteFail.PREDICATE_EQUALS_UNMATCH(this)
     compensationCond ++= subset[Expression](queryEqual, viewEqual)
 
     // less/greater expressions compare
@@ -64,21 +64,21 @@ class PredicateMatcher(viewLogicalPlan: ViewLogicalPlan,
     val queryRangeCondtion = combineAndMergeRangeCondition(queryRange).toSeq
 
     //again make sure viewRangeCondition.size is small queryRangeCondtion.size
-    if (viewRangeCondition.size > queryRangeCondtion.size) return DEFAULT
+    if (viewRangeCondition.size > queryRangeCondtion.size) return RewriteFail.PREDICATE_RANGE_UNMATCH(this)
 
     //all view rangeCondition  should a  SubRangeCondition of query
     val isRangeMatch = viewRangeCondition.map { viewRC =>
       queryRangeCondtion.map(queryRC => if (viewRC.isSubRange(queryRC)) 1 else 0).sum
     }.sum == viewRangeCondition.size
 
-    if (!isRangeMatch) return DEFAULT
+    if (!isRangeMatch) return RewriteFail.PREDICATE_RANGE_UNMATCH(this)
 
     compensationCond ++= (subset[RangeCondition](queryRangeCondtion, viewRangeCondition).flatMap(_.toExpression))
 
     // other conditions compare
     val viewResidual = extractResidualConditions(viewConjunctivePredicates)
     val queryResidual = extractResidualConditions(queryConjunctivePredicates)
-    if (!isSubSetOf(viewResidual, queryResidual)) return DEFAULT
+    if (!isSubSetOf(viewResidual, queryResidual)) return RewriteFail.PREDICATE_EXACLTY_SAME_UNMATCH(this)
     compensationCond ++= subset[Expression](queryResidual, viewResidual)
 
     // make sure all attributeReference in compensationCond is also in output of view
@@ -87,7 +87,7 @@ class PredicateMatcher(viewLogicalPlan: ViewLogicalPlan,
 
     val compensationCondAllInViewProjectList = isSubSetOf(compensationCond.flatMap(extractAttributeReference), viewAttrs)
 
-    if (!compensationCondAllInViewProjectList) return DEFAULT
+    if (!compensationCondAllInViewProjectList) return RewriteFail.PREDICATE_COLUMNS_NOT_IN_VIEW_PROJECT_OR_AGG(this)
 
     // return the compensation expressions
     CompensationExpressions(true, compensationCond)

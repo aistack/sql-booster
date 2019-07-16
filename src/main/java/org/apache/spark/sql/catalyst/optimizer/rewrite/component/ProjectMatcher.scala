@@ -2,7 +2,7 @@ package org.apache.spark.sql.catalyst.optimizer.rewrite.component
 
 import org.apache.spark.sql.catalyst.expressions.Expression
 import org.apache.spark.sql.catalyst.optimizer.rewrite.component.util.{ExpressionIntersectResp, ExpressionSemanticEquals}
-import org.apache.spark.sql.catalyst.optimizer.rewrite.rule.{CompensationExpressions, ExpressionMatcher, ViewLogicalPlan}
+import org.apache.spark.sql.catalyst.optimizer.rewrite.rule.{CompensationExpressions, ExpressionMatcher, RewriteFail, ViewLogicalPlan}
 
 /**
   * 2019-07-14 WilliamZhu(allwefantasy@gmail.com)
@@ -26,7 +26,7 @@ class ProjectMatcher(viewLogicalPlan: ViewLogicalPlan, query: Seq[Expression], v
     val viewColumns = viewLeft.flatMap(extractAttributeReference)
 
     val ExpressionIntersectResp(queryColumnsLeft, viewColumnsLeft, _) = ExpressionSemanticEquals.process(queryColumns, viewColumns)
-    if (queryColumnsLeft.size > 0) return DEFAULT
+    if (queryColumnsLeft.size > 0) return RewriteFail.PROJECT_UNMATCH(this)
     CompensationExpressions(true, Seq())
   }
 

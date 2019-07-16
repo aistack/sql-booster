@@ -75,7 +75,7 @@ trait RewriteHelper extends PredicateHelper {
   }
 
   /** Consider symmetry for joins when comparing plans. */
-  private def sameJoinPlan(plan1: LogicalPlan, plan2: LogicalPlan): Boolean = {
+  def sameJoinPlan(plan1: LogicalPlan, plan2: LogicalPlan): Boolean = {
     (plan1, plan2) match {
       case (j1: Join, j2: Join) =>
         (sameJoinPlan(j1.left, j2.left) && sameJoinPlan(j1.right, j2.right)) ||
@@ -182,6 +182,26 @@ trait RewriteHelper extends PredicateHelper {
     */
   def attributeReferenceEqual(a: AttributeReference, b: AttributeReference) = {
     a.name == b.name && a.dataType == b.dataType
+  }
+
+  def isJoinExists(plan: LogicalPlan) = {
+    var _isJoinExists = false
+    plan transformDown {
+      case a@Join(_, _, _, _) =>
+        _isJoinExists = true
+        a
+    }
+    _isJoinExists
+  }
+
+  def isAggExistsExists(plan:LogicalPlan) ={
+    var _isAggExistsExists = false
+    plan transformDown {
+      case a@Aggregate(_, _, _) =>
+        _isAggExistsExists = true
+        a
+    }
+    _isAggExistsExists
   }
 
 }

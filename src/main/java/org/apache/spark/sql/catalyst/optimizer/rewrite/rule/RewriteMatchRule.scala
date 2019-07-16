@@ -54,10 +54,72 @@ trait LogicalPlanRewrite extends MatchOrRewrite with RewriteHelper {
 }
 
 trait ExpressionMatcher extends MatchOrRewrite with ExpressionMatcherHelper {
-  val DEFAULT = CompensationExpressions(false, Seq())
+  var rewriteFail: Option[RewriteFail] = None
 
   def compare: CompensationExpressions
 }
+
+object RewriteFail {
+  val DEFAULT = CompensationExpressions(false, Seq())
+
+  def apply(msg: String): RewriteFail = RewriteFail(msg, DEFAULT)
+
+  def msg(value: String, matcher: ExpressionMatcher) = {
+    matcher.rewriteFail = Option(apply(value))
+    DEFAULT
+  }
+
+  def GROUP_BY_SIZE_UNMATCH(matcher: ExpressionMatcher) = {
+    msg("GROUP_BY_SIZE_UNMATCH", matcher)
+  }
+
+  def GROUP_BY_COLUMNS_NOT_IN_VIEW_PROJECT_OR_AGG(matcher: ExpressionMatcher) = {
+    msg("GROUP_BY_COLUMNS_NOT_IN_VIEW_PROJECT_OR_AGG", matcher)
+  }
+
+  def AGG_NUMBER_UNMATCH(matcher: ExpressionMatcher) = {
+    msg("AGG_UNMATCH", matcher)
+  }
+
+  def AGG_COLUMNS_UNMATCH(matcher: ExpressionMatcher) = {
+    msg("AGG_COLUMNS_UNMATCH", matcher)
+  }
+
+  def AGG_VIEW_MISSING_COUNTING_STAR(matcher: ExpressionMatcher) = {
+    msg("AGG_VIEW_MISSING_COUNTING_STAR", matcher)
+  }
+
+  def JOIN_UNMATCH(matcher: ExpressionMatcher) = {
+    msg("JOIN_UNMATCH", matcher)
+  }
+
+  def PREDICATE_UNMATCH(matcher: ExpressionMatcher) = {
+    msg("PREDICATE_UNMATCH", matcher)
+  }
+
+  def PREDICATE_EQUALS_UNMATCH(matcher: ExpressionMatcher) = {
+    msg("PREDICATE_EQUALS_UNMATCH", matcher)
+  }
+
+  def PREDICATE_RANGE_UNMATCH(matcher: ExpressionMatcher) = {
+    msg("PREDICATE_RANGE_UNMATCH", matcher)
+  }
+
+  def PREDICATE_EXACLTY_SAME_UNMATCH(matcher: ExpressionMatcher) = {
+    msg("PREDICATE_EXACLTY_SAME_UNMATCH", matcher)
+  }
+
+  def PREDICATE_COLUMNS_NOT_IN_VIEW_PROJECT_OR_AGG(matcher: ExpressionMatcher) = {
+    msg("PREDICATE_COLUMNS_NOT_IN_VIEW_PROJECT_OR_AGG", matcher)
+  }
+
+  def PROJECT_UNMATCH(matcher: ExpressionMatcher) = {
+    msg("PREDICATE_COLUMNS_NOT_IN_VIEW_PROJECT_OR_AGG", matcher)
+  }
+}
+
+
+case class RewriteFail(val msg: String, val ce: CompensationExpressions)
 
 
 trait ExpressionMatcherHelper extends MatchOrRewrite with RewriteHelper {
@@ -112,14 +174,17 @@ object LogicalPlanRewritePipeline {
   def apply(pipeline: Seq[PipelineItemExecutor]): LogicalPlanRewritePipeline = new LogicalPlanRewritePipeline(pipeline)
 }
 
-case class PipelineItemExecutor(matcher: ExpressionMatcher, reWriter: LogicalPlanRewrite) {
+case class PipelineItemExecutor(matcher: ExpressionMatcher, reWriter: LogicalPlanRewrite) extends Logging {
   def execute(plan: LogicalPlan) = {
     val compsation = matcher.compare
     compsation match {
       case CompensationExpressions(true, _) =>
         reWriter.compensationExpressions(compsation)
         reWriter.rewrite(plan)
-      case CompensationExpressions(false, _) => RewritedLogicalPlan(plan, stopPipeline = true)
+      case CompensationExpressions(false, _) =>
+        logInfo(s"=====Rewrite fail:${matcher.rewriteFail.map(_.msg).getOrElse("NONE")}=====")
+        println(s"=====Rewrite fail:${matcher.rewriteFail.map(_.msg).getOrElse("NONE")}=====")
+        RewritedLogicalPlan(plan, stopPipeline = true)
     }
   }
 }

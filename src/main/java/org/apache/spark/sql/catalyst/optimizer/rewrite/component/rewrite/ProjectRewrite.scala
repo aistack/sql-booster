@@ -1,7 +1,7 @@
 package org.apache.spark.sql.catalyst.optimizer.rewrite.component.rewrite
 
 import org.apache.spark.sql.catalyst.expressions.Expression
-import org.apache.spark.sql.catalyst.optimizer.rewrite.rule.{LogicalPlanRewrite, ViewLogicalPlan}
+import org.apache.spark.sql.catalyst.optimizer.rewrite.rule.{LogicalPlanRewrite, RewritedLogicalPlan, ViewLogicalPlan}
 import org.apache.spark.sql.catalyst.plans.logical.{LogicalPlan, Project}
 
 /**
@@ -28,11 +28,17 @@ class ProjectRewrite(viewLogicalPlan: ViewLogicalPlan) extends LogicalPlanRewrit
         projectList
     }
 
-    val newPlan = plan transformDown {
-      case Project(projectList, child) =>
-        val newProjectList = projectList.map(locate).map(targetProjectList(_))
-        Project(newProjectList, child)
+    def rewriteProject(plan: LogicalPlan): LogicalPlan = {
+      plan match {
+        case Project(projectList, child) =>
+          val newProjectList = projectList.map(locate).map(targetProjectList(_))
+          Project(newProjectList, child)
+        case RewritedLogicalPlan(inner, _) => rewriteProject(inner)
+        case _ => plan
+      }
     }
-    _back(newPlan)
+
+    val newPlan = rewriteProject(plan)
+    _back(RewritedLogicalPlan(newPlan, false))
   }
 }
