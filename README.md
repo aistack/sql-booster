@@ -3,6 +3,10 @@
 This is a library for SQL optimizing/rewriting. 
 Current version (0.1.0) we have already support Materialized View rewrite.
 
+This project is under active development and *** NOT READY FOR PRODUCTION ***.
+
+
+
 # Liking
 You can link against this library in your program at the following coordinates:
 
