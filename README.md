@@ -1,6 +1,18 @@
 # sql-booster
 
-A library for optimizing/rewriting SQL. For now, it supports Materialized View.
+This is a library for SQL optimizing/rewriting. 
+Current version (0.1.0) we have already support Materialized View rewrite.
+
+# Liking
+You can link against this library in your program at the following coordinates:
+
+## Scala 2.11
+
+```
+groupId: tech.mlsql
+artifactId: sql-booster_2.11
+version: 0.1.0
+```
 
 ## Usage
 
@@ -35,5 +47,7 @@ Here is the rewrite SQL
 ```sql
 SELECT `a` FROM viewTable1 WHERE 2 = `b1`
 ```
+
+
 
 

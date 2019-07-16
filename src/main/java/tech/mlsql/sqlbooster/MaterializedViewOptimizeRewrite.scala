@@ -1,4 +1,4 @@
-package tech.mlsql.sqlbooster.meta.tech.mlsql.sqlbooster
+package tech.mlsql.sqlbooster
 
 import org.apache.spark.sql.catalyst.optimizer.RewriteTableToViews
 import org.apache.spark.sql.catalyst.plans.logical.LogicalPlan

@@ -14,8 +14,8 @@ import org.apache.spark.sql.catalyst.sqlgenerator.{BasicSQLDialect, LogicalPlanS
 import org.apache.spark.sql.test.SharedSQLContext
 import org.apache.spark.sql.types.StructType
 import tech.mlsql.schema.parser.SparkSimpleSchemaParser
+import tech.mlsql.sqlbooster.MaterializedViewOptimizeRewrite
 import tech.mlsql.sqlbooster.meta.ViewCatalyst
-import tech.mlsql.sqlbooster.meta.tech.mlsql.sqlbooster.MaterializedViewOptimizeRewrite
 
 /**
   * 2019-07-11 WilliamZhu(allwefantasy@gmail.com)
