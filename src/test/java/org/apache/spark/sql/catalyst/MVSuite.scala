@@ -76,7 +76,7 @@ class MVSuite extends StreamTest with PredicateHelper {
     assert(g(rewrite) =="""SELECT `b`, sum(`total`) AS `jack`, `wow` AS `wow1` FROM viewTable3 GROUP BY `b`""")
 
   }
-  
+
 
   def lp(sql: String) = {
     val temp = spark.sql(sql).queryExecution.analyzed
