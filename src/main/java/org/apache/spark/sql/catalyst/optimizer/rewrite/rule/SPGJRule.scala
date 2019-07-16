@@ -43,7 +43,7 @@ class SPGJRule extends RewriteMatchRule {
 
     val mainTable = extractTablesFromPlan(mainTableLogicalPlan).head
 
-    val viewPlan = ViewCatalyst.meta.getCandinateViewsByTable(mainTable) match {
+    val viewPlan = ViewCatalyst.meta.getCandidateViewsByTable(mainTable) match {
       case Some(viewNames) =>
         viewNames.filter { viewName =>
           ViewCatalyst.meta.getViewCreateLogicalPlan(viewName) match {

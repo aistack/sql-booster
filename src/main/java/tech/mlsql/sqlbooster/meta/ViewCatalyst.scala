@@ -1,6 +1,5 @@
 package tech.mlsql.sqlbooster.meta
 
-import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.catalyst.expressions.NamedExpression
 import org.apache.spark.sql.catalyst.optimizer.RewriteHelper
 import org.apache.spark.sql.catalyst.plans.logical.LogicalPlan
@@ -11,7 +10,24 @@ import scala.collection.JavaConverters._
   * 2019-07-11 WilliamZhu(allwefantasy@gmail.com)
   */
 
-class ViewCatalyst extends RewriteHelper {
+trait ViewCatalyst {
+  def registerMaterializedViewFromLogicalPlan(name: String, tableLogicalPlan: LogicalPlan, createLP: LogicalPlan): ViewCatalyst
+
+  def registerTableFromLogicalPlan(name: String, tableLogicalPlan: LogicalPlan): ViewCatalyst
+
+  def getCandidateViewsByTable(tableName: String): Option[Set[String]]
+
+  def getViewLogicalPlan(viewName: String): Option[LogicalPlan]
+
+  def getViewCreateLogicalPlan(viewName: String): Option[LogicalPlan]
+
+  def getViewNameByLogicalPlan(viewLP: LogicalPlan): Option[String]
+
+  def getTableNameByLogicalPlan(viewLP: LogicalPlan): Option[String]
+
+}
+
+class SimpleViewCatalyst extends ViewCatalyst with RewriteHelper {
 
   //view name -> LogicalPlan
   private val viewToCreateLogicalPlan = new java.util.concurrent.ConcurrentHashMap[String, LogicalPlan]()
@@ -26,7 +42,7 @@ class ViewCatalyst extends RewriteHelper {
   private val logicalPlanToTableName = new java.util.concurrent.ConcurrentHashMap[LogicalPlan, String]()
 
 
-  def registerMaterializedViewFromLogicalPlan(name: String, tableLogicalPlan: LogicalPlan, createLP: LogicalPlan) = {
+  override def registerMaterializedViewFromLogicalPlan(name: String, tableLogicalPlan: LogicalPlan, createLP: LogicalPlan) = {
 
     def pushToTableToViews(tableName: String) = {
       val items = tableToViews.asScala.getOrElse(tableName, Set[String]())
@@ -43,30 +59,30 @@ class ViewCatalyst extends RewriteHelper {
 
   }
 
-  def registerTableFromLogicalPlan(name: String, tableLogicalPlan: LogicalPlan) = {
+  override def registerTableFromLogicalPlan(name: String, tableLogicalPlan: LogicalPlan) = {
     logicalPlanToTableName.put(tableLogicalPlan, name)
     this
 
   }
 
 
-  def getCandinateViewsByTable(tableName: String) = {
+  override def getCandidateViewsByTable(tableName: String) = {
     tableToViews.asScala.get(tableName)
   }
 
-  def getViewLogicalPlan(viewName: String) = {
+  override def getViewLogicalPlan(viewName: String) = {
     viewToLogicalPlan.asScala.get(viewName)
   }
 
-  def getViewCreateLogicalPlan(viewName: String) = {
+  override def getViewCreateLogicalPlan(viewName: String) = {
     viewToCreateLogicalPlan.asScala.get(viewName)
   }
 
-  def getViewNameByLogicalPlan(viewLP: LogicalPlan) = {
+  override def getViewNameByLogicalPlan(viewLP: LogicalPlan) = {
     viewToLogicalPlan.asScala.filter(f => f._2 == viewLP).map(f => f._1).headOption
   }
 
-  def getTableNameByLogicalPlan(viewLP: LogicalPlan) = {
+  override def getTableNameByLogicalPlan(viewLP: LogicalPlan) = {
     logicalPlanToTableName.asScala.get(viewLP)
   }
 }
@@ -76,8 +92,8 @@ case class TableHolder(db: String, table: String, output: Seq[NamedExpression], 
 object ViewCatalyst {
   private var _meta: ViewCatalyst = null
 
-  def createViewCatalyst(spark: Option[SparkSession] = None) = {
-    _meta = new ViewCatalyst()
+  def createViewCatalyst(clzz: Option[String] = None) = {
+    _meta = if (clzz.isDefined) Class.forName(clzz.get).newInstance().asInstanceOf[ViewCatalyst] else new SimpleViewCatalyst()
   }
 
   def meta = {

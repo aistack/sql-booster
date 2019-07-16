@@ -20,7 +20,7 @@ class WithoutJoinRule extends RewriteMatchRule {
     val tables = extractTablesFromPlan(plan)
     if (tables.size == 0) return Seq()
     val table = tables.head
-    val viewPlan = ViewCatalyst.meta.getCandinateViewsByTable(table) match {
+    val viewPlan = ViewCatalyst.meta.getCandidateViewsByTable(table) match {
       case Some(viewNames) =>
         viewNames.filter { viewName =>
           ViewCatalyst.meta.getViewCreateLogicalPlan(viewName) match {
