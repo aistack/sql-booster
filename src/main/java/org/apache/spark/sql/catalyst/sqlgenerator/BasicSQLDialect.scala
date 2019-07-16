@@ -43,5 +43,5 @@ class BasicSQLDialect extends SQLDialect {
     (None, None)
   }
 
-  override def enableCanonicalize: Boolean = true
+  override def enableCanonicalize: Boolean = false
 }

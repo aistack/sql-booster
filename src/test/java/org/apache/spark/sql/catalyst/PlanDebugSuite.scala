@@ -15,6 +15,7 @@ import org.apache.spark.sql.test.SharedSQLContext
 import org.apache.spark.sql.types.StructType
 import tech.mlsql.schema.parser.SparkSimpleSchemaParser
 import tech.mlsql.sqlbooster.meta.ViewCatalyst
+import tech.mlsql.sqlbooster.meta.tech.mlsql.sqlbooster.MaterializedViewOptimizeRewrite
 
 /**
   * 2019-07-11 WilliamZhu(allwefantasy@gmail.com)
@@ -228,14 +229,14 @@ class WholeTestSuite extends SparkFunSuite {
 
 
       // select a from viewTable1 where b1=2;
-      val rewrite = OptimizeRewrite.execute(analyzed3)
+      val rewrite = MaterializedViewOptimizeRewrite.execute(analyzed3)
       println(viewTable1.logicalPlan)
       println(rewrite)
       Dataset.ofRows(spark, analyzed3).show(100)
       Dataset.ofRows(spark, rewrite).show(100)
       //      println(new LogicalPlanSQL(rewrite, new BasicSQLDialect).toSQL)
-      println(analyzed3)
-      println(new LogicalPlanSQL(analyzed4, new BasicSQLDialect).toSQL)
+      println(rewrite)
+      println(new LogicalPlanSQL(rewrite, new BasicSQLDialect).toSQL)
       //println(spark.sql(""" select table1.a,table1.b from table1 left join table2 where table1.a=table2.b1 and table2.b1=2 """).queryExecution.optimizedPlan)
 
       //      println(analyzed3)
