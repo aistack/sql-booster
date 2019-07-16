@@ -5,6 +5,7 @@ import org.apache.spark.sql.catalyst.optimizer.PreOptimizeRewrite
 import org.apache.spark.sql.catalyst.optimizer.rewrite.component._
 import org.apache.spark.sql.catalyst.optimizer.rewrite.component.rewrite._
 import org.apache.spark.sql.catalyst.plans.logical._
+import org.apache.spark.sql.execution.datasources.LogicalRelation
 import tech.mlsql.sqlbooster.meta.ViewCatalyst
 
 import scala.collection.mutable.ArrayBuffer
@@ -37,7 +38,11 @@ class SPGJRule extends RewriteMatchRule {
 
     plan transformUp {
       case a@Join(_, _, _, _) =>
-        mainTableLogicalPlan = a.left
+        a.left transformUp {
+          case a@SubqueryAlias(_, child@LogicalRelation(_, _, _, _)) =>
+            mainTableLogicalPlan = a
+            a
+        }
         a
     }
 
@@ -68,7 +73,7 @@ class SPGJRule extends RewriteMatchRule {
     var targetViewPlanOption = fetchView(plan)
     if (targetViewPlanOption.isEmpty) return plan
 
-    targetViewPlanOption = targetViewPlanOption.map(f => 
+    targetViewPlanOption = targetViewPlanOption.map(f =>
       f.copy(viewCreateLogicalPlan = PreOptimizeRewrite.execute(f.viewCreateLogicalPlan)))
 
     var shouldBreak = false

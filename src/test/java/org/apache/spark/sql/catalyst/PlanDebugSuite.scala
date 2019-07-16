@@ -213,11 +213,11 @@ class WholeTestSuite extends SparkFunSuite {
 
       val analyzed3 = spark.sql(
         """
-          |select table1.a
-          |from table1
-          |left join table2 on table1.a=table2.b1
-          |left join table3 on table2.b1=table3.b2
-          |where table2.b1=2
+          |select t1.a
+          |from table1  t1
+          |left join table2 t2 on t1.a=t2.b1
+          |left join table3 t3 on t2.b1=t3.b2
+          |where t2.b1=2
         """.stripMargin).queryExecution.analyzed
 
       val analyzed4 = spark.sql(
@@ -227,15 +227,14 @@ class WholeTestSuite extends SparkFunSuite {
           |group by dj.a,dj.b
         """.stripMargin).queryExecution.analyzed
 
-
       // select a from viewTable1 where b1=2;
       val rewrite = MaterializedViewOptimizeRewrite.execute(analyzed3)
       println(viewTable1.logicalPlan)
       println(rewrite)
-      Dataset.ofRows(spark, analyzed3).show(100)
-      Dataset.ofRows(spark, rewrite).show(100)
+      //      Dataset.ofRows(spark, analyzed3).show(100)
+      //      Dataset.ofRows(spark, rewrite).show(100)
       //      println(new LogicalPlanSQL(rewrite, new BasicSQLDialect).toSQL)
-      println(rewrite)
+      //      println(rewrite)
       println(new LogicalPlanSQL(rewrite, new BasicSQLDialect).toSQL)
       //println(spark.sql(""" select table1.a,table1.b from table1 left join table2 where table1.a=table2.b1 and table2.b1=2 """).queryExecution.optimizedPlan)
 

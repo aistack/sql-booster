@@ -45,10 +45,26 @@ trait RewriteHelper extends PredicateHelper {
     */
   private def rewriteEqual(condition: Expression): Expression = condition match {
     case eq@EqualTo(l: Expression, r: Expression) =>
-      Seq(l, r).sortBy(_.hashCode()).reduce(EqualTo)
+      Seq(l, r).sortBy(hashCode).reduce(EqualTo)
     case eq@EqualNullSafe(l: Expression, r: Expression) =>
-      Seq(l, r).sortBy(_.hashCode()).reduce(EqualNullSafe)
+      Seq(l, r).sortBy(hashCode).reduce(EqualNullSafe)
     case _ => condition // Don't reorder.
+  }
+
+  def hashCode(_ar: Expression): Int = {
+    // See http://stackoverflow.com/questions/113511/hash-code-implementation
+    _ar match {
+      case ar@AttributeReference(_, _, _, _) =>
+        var h = 17
+        h = h * 37 + ar.name.hashCode()
+        h = h * 37 + ar.dataType.hashCode()
+        h = h * 37 + ar.nullable.hashCode()
+        h = h * 37 + ar.metadata.hashCode()
+        h = h * 37 + ar.exprId.hashCode()
+        h
+      case _ => _ar.hashCode()
+    }
+
   }
 
   /**
@@ -58,17 +74,22 @@ trait RewriteHelper extends PredicateHelper {
     *   etc., will all now be equivalent.
     * - Sample the seed will replaced by 0L.
     * - Join conditions will be resorted by hashCode.
+    *
+    * we use new hash function to avoid `ar.qualifier` from alias affect the final order.
+    *
     */
   protected def normalizePlan(plan: LogicalPlan): LogicalPlan = {
+
+
     plan transform {
       case Filter(condition: Expression, child: LogicalPlan) =>
-        Filter(splitConjunctivePredicates(condition).map(rewriteEqual).sortBy(_.hashCode())
+        Filter(splitConjunctivePredicates(condition).map(rewriteEqual).sortBy(hashCode)
           .reduce(And), child)
       case sample: Sample =>
         sample.copy(seed = 0L)
       case Join(left, right, joinType, condition) if condition.isDefined =>
         val newCondition =
-          splitConjunctivePredicates(condition.get).map(rewriteEqual).sortBy(_.hashCode())
+          splitConjunctivePredicates(condition.get).map(rewriteEqual).sortBy(hashCode)
             .reduce(And)
         Join(left, right, joinType, Some(newCondition))
     }
@@ -97,7 +118,7 @@ trait RewriteHelper extends PredicateHelper {
   def extractTableHolderFromPlan(plan: LogicalPlan) = {
     var tables = Set[TableHolder]()
     plan transformDown {
-      case a@SubqueryAlias(_, _) =>
+      case a@SubqueryAlias(_, LogicalRelation(_, _, _, _)) =>
         tables += TableHolder(null, a.name.unquotedString, a.output, a)
         a
       case m@HiveTableRelation(tableMeta, _, _) =>
@@ -194,7 +215,7 @@ trait RewriteHelper extends PredicateHelper {
     _isJoinExists
   }
 
-  def isAggExistsExists(plan:LogicalPlan) ={
+  def isAggExistsExists(plan: LogicalPlan) = {
     var _isAggExistsExists = false
     plan transformDown {
       case a@Aggregate(_, _, _) =>
