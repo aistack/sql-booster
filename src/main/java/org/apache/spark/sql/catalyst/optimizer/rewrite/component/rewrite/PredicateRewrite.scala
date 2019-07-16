@@ -30,6 +30,5 @@ class PredicateRewrite(viewLogicalPlan: ViewLogicalPlan) extends LogicalPlanRewr
 
     }
     _back(newPlan)
-
   }
 }

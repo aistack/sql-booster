@@ -1,6 +1,6 @@
 package org.apache.spark.sql.catalyst.optimizer.rewrite.component.rewrite
 
-import org.apache.spark.sql.catalyst.expressions.Expression
+import org.apache.spark.sql.catalyst.expressions.{AttributeReference, NamedExpression}
 import org.apache.spark.sql.catalyst.optimizer.rewrite.rule.{LogicalPlanRewrite, RewritedLogicalPlan, ViewLogicalPlan}
 import org.apache.spark.sql.catalyst.plans.logical.{LogicalPlan, Project}
 
@@ -11,27 +11,17 @@ class ProjectRewrite(viewLogicalPlan: ViewLogicalPlan) extends LogicalPlanRewrit
 
   override def rewrite(plan: LogicalPlan): LogicalPlan = {
 
-    def locate(expr: Expression): Int = {
-      viewLogicalPlan.viewCreateLogicalPlan match {
-        case Project(projectList, _) => {
-          projectList.zipWithIndex.map { case (item, index) =>
-            item.semanticEquals(expr)
-            return index
-          }
-        }
-      }
-      return -1
-    }
-
-    val targetProjectList = viewLogicalPlan.tableLogicalPlan match {
-      case Project(projectList, child) =>
-        projectList
-    }
+    val projectOrAggList = viewLogicalPlan.tableLogicalPlan.output
 
     def rewriteProject(plan: LogicalPlan): LogicalPlan = {
       plan match {
         case Project(projectList, child) =>
-          val newProjectList = projectList.map(locate).map(targetProjectList(_))
+          val newProjectList = projectList.map { expr =>
+            expr transformDown {
+              case a@AttributeReference(name, dt, _, _) =>
+                extractAttributeReferenceFromFirstLevel(projectOrAggList).filter(f => attributeReferenceEqual(a, f)).head
+            }
+          }.map(_.asInstanceOf[NamedExpression])
           Project(newProjectList, child)
         case RewritedLogicalPlan(inner, _) => rewriteProject(inner)
         case _ => plan
