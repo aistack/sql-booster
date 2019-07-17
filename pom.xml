@@ -188,7 +188,6 @@
     </profiles>
 
     <build>
-        <sourceDirectory>src/main/java/</sourceDirectory>
         <resources>
             <resource>
                 <directory>src/main/resources</directory>
@@ -226,17 +225,23 @@
                 </configuration>
                 <executions>
                     <execution>
-                        <id>scala-compile-first</id>
-                        <phase>process-resources</phase>
+                        <id>compile</id>
                         <goals>
                             <goal>compile</goal>
                         </goals>
+                        <phase>compile</phase>
                     </execution>
                     <execution>
-                        <id>scala-test-compile</id>
-                        <phase>process-test-resources</phase>
+                        <id>testCompile</id>
                         <goals>
                             <goal>testCompile</goal>
+                        </goals>
+                        <phase>test</phase>
+                    </execution>
+                    <execution>
+                        <phase>process-resources</phase>
+                        <goals>
+                            <goal>compile</goal>
                         </goals>
                     </execution>
                 </executions>

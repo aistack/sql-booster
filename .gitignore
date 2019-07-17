@@ -1,3 +1,15 @@
 *.iml
 .idea/
 target/
+
+.settings/
+.cache
+.project
+.classpath
+metastore_db/
+spark-warehouse/
+derby.log
+.cache-main
+.cache-tests
+*/.cache-main
+*/.cache-tests
