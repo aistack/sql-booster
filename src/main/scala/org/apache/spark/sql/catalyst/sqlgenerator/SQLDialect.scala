@@ -9,6 +9,7 @@ import java.sql.Connection
 import org.apache.spark.sql.catalyst.expressions.{AttributeReference, Expression}
 import org.apache.spark.sql.catalyst.plans.logical.{Join, OneRowRelation, Project}
 import org.apache.spark.sql.catalyst.util.DateTimeUtils
+import org.apache.spark.sql.execution.LogicalRDD
 import org.apache.spark.sql.execution.datasources.LogicalRelation
 import org.apache.spark.sql.types._
 import org.apache.spark.unsafe.types.UTF8String
@@ -22,7 +23,9 @@ trait SQLDialect {
 
   def relation(relation: LogicalRelation): String
 
-  def enableCanonicalize :Boolean
+  def relation2(relation: LogicalRDD): String
+
+  def enableCanonicalize: Boolean
 
   def canHandle(url: String): Boolean
 

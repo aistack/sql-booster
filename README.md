@@ -44,13 +44,13 @@ viewTable1.logicalPlan,
 createViewTable1.logicalPlan)
 
 val analyzed3 = spark.sql(
-        """
-          |select table1.a
-          |from table1
-          |left join table2 on table1.a=table2.b1
-          |left join table3 on table2.b1=table3.b2
-          |where table2.b1=2
-        """.stripMargin).queryExecution.analyzed
+      """
+        |select t1.a
+        |from table1  t1
+        |left join table2 t2 on t1.a=t2.b1
+        |left join table3 t3 on t2.b1=t3.b2
+        |where t2.b1=2
+      """.stripMargin)).queryExecution.analyzed
         
 val rewrite = MaterializedViewOptimizeRewrite.execute(analyzed3)
 println(new LogicalPlanSQL(rewrite, new BasicSQLDialect).toSQL)

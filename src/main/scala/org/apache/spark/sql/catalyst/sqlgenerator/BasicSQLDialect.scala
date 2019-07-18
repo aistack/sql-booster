@@ -3,6 +3,7 @@ package org.apache.spark.sql.catalyst.sqlgenerator
 import java.sql.Connection
 
 import org.apache.spark.sql.catalyst.dsl.plans._
+import org.apache.spark.sql.execution.LogicalRDD
 import org.apache.spark.sql.execution.datasources.LogicalRelation
 import tech.mlsql.sqlbooster.meta.ViewCatalyst
 
@@ -31,6 +32,13 @@ class BasicSQLDialect extends SQLDialect {
 
   }
 
+  override def relation2(relation: LogicalRDD): String = {
+    ViewCatalyst.meta.getTableNameByLogicalPlan(relation.logicalPlan) match {
+      case Some(i) => i
+      case None => null
+    }
+  }
+
   override def maybeQuote(name: String): String = {
     name
   }
@@ -44,4 +52,6 @@ class BasicSQLDialect extends SQLDialect {
   }
 
   override def enableCanonicalize: Boolean = false
+
+
 }

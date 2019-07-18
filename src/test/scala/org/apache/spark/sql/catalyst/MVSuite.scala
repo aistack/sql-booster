@@ -1,5 +1,6 @@
 package org.apache.spark.sql.catalyst
 
+import com.alibaba.druid.util.JdbcConstants
 import org.apache.spark.sql.SaveMode
 import org.apache.spark.sql.catalyst.expressions.PredicateHelper
 import org.apache.spark.sql.catalyst.plans.logical.LogicalPlan
@@ -7,6 +8,7 @@ import org.apache.spark.sql.catalyst.sqlgenerator.{BasicSQLDialect, LogicalPlanS
 import org.apache.spark.sql.streaming.StreamTest
 import tech.mlsql.sqlbooster.MaterializedViewOptimizeRewrite
 import tech.mlsql.sqlbooster.meta.ViewCatalyst
+import tech.mlsql.sqlbooster.db.RDSchema
 
 /**
   * 2019-07-16 WilliamZhu(allwefantasy@gmail.com)
@@ -74,6 +76,21 @@ class MVSuite extends StreamTest with PredicateHelper {
         |select b,count(*) as jack,sum(b) as wow1 from table1 where a=1 group by b
       """.stripMargin))
     assert(g(rewrite) =="""SELECT `b`, sum(`total`) AS `jack`, `wow` AS `wow1` FROM viewTable3 GROUP BY `b`""")
+
+  }
+
+  test("create table") {
+    val rd = new RDSchema(JdbcConstants.MYSQL)
+    rd.createTable(
+      """
+        |CREATE TABLE depts(
+        |  deptno INT NOT NULL,
+        |  deptname VARCHAR(20),
+        |  PRIMARY KEY (deptno)
+        |);
+      """.stripMargin)
+    val table = rd.getTableSchema("depts")
+    println(table)
 
   }
 

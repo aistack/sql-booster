@@ -74,6 +74,7 @@ class LogicalPlanSQL(plan: LogicalPlan, dialect: SQLDialect) {
       // here we can reduce too much subquery
       val tableName = child match {
         case a@LogicalRelation(_, _, _, _) => dialect.relation(a)
+        case a@LogicalRDD(_, _, _, _, _) => dialect.relation2(a)
         case _ => null
       }
       if (tableName != null) {
@@ -96,8 +97,8 @@ class LogicalPlanSQL(plan: LogicalPlan, dialect: SQLDialect) {
       else childrenSQL.head
     case r: LogicalRelation =>
       dialect.relation(r)
-    case r: LogicalRDD => "__LogicalRDD__"
-    case r: OneRowRelation => ""
+    case r: LogicalRDD => "__SHOULD_NOT_BE_HERE__"
+    case r: OneRowRelation => "__SHOULD_NOT_BE_HERE__"
     case Filter(condition, child) =>
       val whereOrHaving = child match {
         case _: Aggregate => "HAVING"
