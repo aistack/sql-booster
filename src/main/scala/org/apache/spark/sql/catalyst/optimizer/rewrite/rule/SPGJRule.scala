@@ -5,6 +5,7 @@ import org.apache.spark.sql.catalyst.optimizer.PreOptimizeRewrite
 import org.apache.spark.sql.catalyst.optimizer.rewrite.component._
 import org.apache.spark.sql.catalyst.optimizer.rewrite.component.rewrite._
 import org.apache.spark.sql.catalyst.plans.logical._
+import org.apache.spark.sql.execution.LogicalRDD
 import org.apache.spark.sql.execution.datasources.LogicalRelation
 import tech.mlsql.sqlbooster.meta.ViewCatalyst
 
@@ -25,8 +26,8 @@ class SPGJRule extends RewriteMatchRule {
     * @param plan
     * @return
     */
-  override def fetchView(plan: LogicalPlan): Seq[ViewLogicalPlan] = {
-
+  override def fetchView(plan: LogicalPlan, rewriteContext: RewriteContext): Seq[ViewLogicalPlan] = {
+    require(plan.resolved, "LogicalPlan must be resolved.")
 
     if (!isJoinExists(plan)) return Seq()
 
@@ -40,6 +41,9 @@ class SPGJRule extends RewriteMatchRule {
       case a@Join(_, _, _, _) =>
         a.left transformUp {
           case a@SubqueryAlias(_, child@LogicalRelation(_, _, _, _)) =>
+            mainTableLogicalPlan = a
+            a
+          case a@SubqueryAlias(_, child@LogicalRDD(_, _, _, _, _)) =>
             mainTableLogicalPlan = a
             a
         }
@@ -68,9 +72,9 @@ class SPGJRule extends RewriteMatchRule {
     viewPlan
   }
 
-  override def rewrite(_plan: LogicalPlan): LogicalPlan = {
+  override def rewrite(_plan: LogicalPlan, rewriteContext: RewriteContext): LogicalPlan = {
     val plan = PreOptimizeRewrite.execute(_plan)
-    var targetViewPlanOption = fetchView(plan)
+    var targetViewPlanOption = fetchView(plan, rewriteContext)
     if (targetViewPlanOption.isEmpty) return plan
 
     targetViewPlanOption = targetViewPlanOption.map(f =>
@@ -81,7 +85,8 @@ class SPGJRule extends RewriteMatchRule {
 
     targetViewPlanOption.foreach { targetViewPlan =>
       if (!shouldBreak) {
-        val res = _rewrite(plan, targetViewPlan)
+        rewriteContext.viewLogicalPlan.set(targetViewPlan)
+        val res = _rewrite(plan, rewriteContext)
         res match {
           case a@RewritedLogicalPlan(_, true) =>
             finalPlan = a
@@ -94,9 +99,9 @@ class SPGJRule extends RewriteMatchRule {
     finalPlan
   }
 
-  def _rewrite(plan: LogicalPlan, targetViewPlan: ViewLogicalPlan): LogicalPlan = {
+  def _rewrite(plan: LogicalPlan, rewriteContext: RewriteContext): LogicalPlan = {
 
-    val rewriteContext = generateRewriteContext(plan, targetViewPlan)
+    generateRewriteContext(plan, rewriteContext)
 
     val pipeline = buildPipeline(rewriteContext: RewriteContext, Seq(
       new PredicateMatcher(rewriteContext),
@@ -128,7 +133,7 @@ class SPGJRule extends RewriteMatchRule {
     }
   }
 
-  def generateRewriteContext(plan: LogicalPlan, targetViewPlan: ViewLogicalPlan) = {
+  def generateRewriteContext(plan: LogicalPlan, rewriteContext: RewriteContext) = {
     var queryConjunctivePredicates: Seq[Expression] = Seq()
     var viewConjunctivePredicates: Seq[Expression] = Seq()
 
@@ -145,7 +150,7 @@ class SPGJRule extends RewriteMatchRule {
     val queryJoins = ArrayBuffer[Join]()
 
     val queryNormalizePlan = normalizePlan(plan)
-    val viewNormalizePlan = normalizePlan(targetViewPlan.viewCreateLogicalPlan)
+    val viewNormalizePlan = normalizePlan(rewriteContext.viewLogicalPlan.get.viewCreateLogicalPlan)
     //collect all predicates
     viewNormalizePlan transformDown {
       case a@Filter(condition, _) =>
@@ -184,7 +189,7 @@ class SPGJRule extends RewriteMatchRule {
     viewJoins += extractFirstLevelJoin(viewNormalizePlan)
     queryJoins += extractFirstLevelJoin(queryNormalizePlan)
 
-    new RewriteContext(targetViewPlan, ProcessedComponent(
+    rewriteContext.processedComponent.set(ProcessedComponent(
       queryConjunctivePredicates,
       viewConjunctivePredicates,
       queryProjectList,
@@ -196,6 +201,7 @@ class SPGJRule extends RewriteMatchRule {
       viewJoins,
       queryJoins
     ))
+
   }
 }
 

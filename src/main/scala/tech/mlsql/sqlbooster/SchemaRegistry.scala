@@ -44,6 +44,7 @@ class SchemaRegistry(spark: SparkSession) {
     val createViewTable1 = spark.sql(viewCreate)
     val df = spark.createDataFrame(spark.sparkContext.emptyRDD[Row], createViewTable1.schema)
     df.createOrReplaceTempView(viewName)
+    ViewCatalyst.meta.registerTableFromLogicalPlan(viewName, df.queryExecution.analyzed)
     ViewCatalyst.meta.registerMaterializedViewFromLogicalPlan(viewName, df.queryExecution.analyzed, createViewTable1.queryExecution.analyzed)
   }
 

@@ -1,7 +1,7 @@
 package org.apache.spark.sql.catalyst.optimizer.rewrite.component.rewrite
 
 import org.apache.spark.sql.catalyst.expressions.{AttributeReference, NamedExpression}
-import org.apache.spark.sql.catalyst.optimizer.rewrite.rule.{LogicalPlanRewrite, RewriteContext, RewritedLogicalPlan, ViewLogicalPlan}
+import org.apache.spark.sql.catalyst.optimizer.rewrite.rule.{LogicalPlanRewrite, RewriteContext, RewritedLogicalPlan}
 import org.apache.spark.sql.catalyst.plans.logical.{LogicalPlan, Project}
 
 /**
@@ -11,7 +11,7 @@ class ProjectRewrite(rewriteContext: RewriteContext) extends LogicalPlanRewrite 
 
   override def rewrite(plan: LogicalPlan): LogicalPlan = {
 
-    val projectOrAggList = rewriteContext.viewLogicalPlan.tableLogicalPlan.output
+    val projectOrAggList = rewriteContext.viewLogicalPlan.get().tableLogicalPlan.output
 
     def rewriteProject(plan: LogicalPlan): LogicalPlan = {
       plan match {
@@ -19,7 +19,9 @@ class ProjectRewrite(rewriteContext: RewriteContext) extends LogicalPlanRewrite 
           val newProjectList = projectList.map { expr =>
             expr transformDown {
               case a@AttributeReference(name, dt, _, _) =>
-                extractAttributeReferenceFromFirstLevel(projectOrAggList).filter(f => attributeReferenceEqual(a, f)).head
+                val newAr = extractAttributeReferenceFromFirstLevel(projectOrAggList).filter(f => attributeReferenceEqual(a, f)).head
+                rewriteContext.replacedARMapping += (a.withQualifier(Seq()) -> newAr)
+                newAr
             }
           }.map(_.asInstanceOf[NamedExpression])
           Project(newProjectList, child)

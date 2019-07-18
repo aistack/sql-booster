@@ -10,9 +10,9 @@ class JoinRewrite(rewriteContext: RewriteContext) extends LogicalPlanRewrite {
   override def rewrite(plan: LogicalPlan): LogicalPlan = {
 
     plan transformUp {
-      case Join(_, _, _, _) => rewriteContext.viewLogicalPlan.tableLogicalPlan match {
+      case Join(_, _, _, _) => rewriteContext.viewLogicalPlan.get().tableLogicalPlan match {
         case Project(_, child) => child
-        case _ => rewriteContext.viewLogicalPlan.tableLogicalPlan
+        case _ => rewriteContext.viewLogicalPlan.get().tableLogicalPlan
       }
     }
   }

@@ -26,11 +26,11 @@ class PredicateMatcher(rewriteContext: RewriteContext) extends ExpressionMatcher
 
     val compensationCond = ArrayBuffer[Expression]()
 
-    if (rewriteContext.processedComponent.viewConjunctivePredicates.size > rewriteContext.processedComponent.queryConjunctivePredicates.size) return RewriteFail.PREDICATE_UNMATCH(this)
+    if (rewriteContext.processedComponent.get().viewConjunctivePredicates.size > rewriteContext.processedComponent.get().queryConjunctivePredicates.size) return RewriteFail.PREDICATE_UNMATCH(this)
 
     // equal expression compare
-    val viewEqual = extractEqualConditions(rewriteContext.processedComponent.viewConjunctivePredicates)
-    val queryEqual = extractEqualConditions(rewriteContext.processedComponent.queryConjunctivePredicates)
+    val viewEqual = extractEqualConditions(rewriteContext.processedComponent.get().viewConjunctivePredicates)
+    val queryEqual = extractEqualConditions(rewriteContext.processedComponent.get().queryConjunctivePredicates)
 
     // if viewEqual are not subset of queryEqual, then it will not match.
     if (!isSubSetOf(viewEqual, queryEqual)) return RewriteFail.PREDICATE_EQUALS_UNMATCH(this)
@@ -41,8 +41,8 @@ class PredicateMatcher(rewriteContext: RewriteContext) extends ExpressionMatcher
     // make sure all less/greater expression with the same presentation
     // for example if exits a < 3 && a>=1 then we should change to RangeCondition(a,1,3)
     // or b < 3 then RangeCondition(b,None,3)
-    val viewRange = extractRangeConditions(rewriteContext.processedComponent.viewConjunctivePredicates).map(convertRangeCon)
-    val queryRange = extractRangeConditions(rewriteContext.processedComponent.queryConjunctivePredicates).map(convertRangeCon)
+    val viewRange = extractRangeConditions(rewriteContext.processedComponent.get().viewConjunctivePredicates).map(convertRangeCon)
+    val queryRange = extractRangeConditions(rewriteContext.processedComponent.get().queryConjunctivePredicates).map(convertRangeCon)
 
     // combine something like
     // RangeCondition(a,1,None),RangeCondition(a,None,3) into RangeCondition(a,1,3)
@@ -72,14 +72,14 @@ class PredicateMatcher(rewriteContext: RewriteContext) extends ExpressionMatcher
     compensationCond ++= (subset[RangeCondition](queryRangeCondtion, viewRangeCondition).flatMap(_.toExpression))
 
     // other conditions compare
-    val viewResidual = extractResidualConditions(rewriteContext.processedComponent.viewConjunctivePredicates)
-    val queryResidual = extractResidualConditions(rewriteContext.processedComponent.queryConjunctivePredicates)
+    val viewResidual = extractResidualConditions(rewriteContext.processedComponent.get().viewConjunctivePredicates)
+    val queryResidual = extractResidualConditions(rewriteContext.processedComponent.get().queryConjunctivePredicates)
     if (!isSubSetOf(viewResidual, queryResidual)) return RewriteFail.PREDICATE_EXACLTY_SAME_UNMATCH(this)
     compensationCond ++= subset[Expression](queryResidual, viewResidual)
 
     // make sure all attributeReference in compensationCond is also in output of view
     // we get all columns without applied any function in projectList of viewCreateLogicalPlan
-    val viewAttrs = extractAttributeReferenceFromFirstLevel(rewriteContext.processedComponent.viewProjectList)
+    val viewAttrs = extractAttributeReferenceFromFirstLevel(rewriteContext.processedComponent.get().viewProjectList)
 
     val compensationCondAllInViewProjectList = isSubSetOf(compensationCond.flatMap(extractAttributeReference), viewAttrs)
 

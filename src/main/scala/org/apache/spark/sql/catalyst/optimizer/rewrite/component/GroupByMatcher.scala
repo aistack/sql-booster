@@ -34,9 +34,9 @@ class GroupByMatcher(rewriteContext: RewriteContext) extends ExpressionMatcher {
       *
       * then  query  isSubSet of view . Please take care of the order in group by.
       */
-    val query = rewriteContext.processedComponent.queryGroupingExpressions
-    val view = rewriteContext.processedComponent.viewGroupingExpressions
-    val viewAggregateExpressions = rewriteContext.processedComponent.viewAggregateExpressions
+    val query = rewriteContext.processedComponent.get().queryGroupingExpressions
+    val view = rewriteContext.processedComponent.get().viewGroupingExpressions
+    val viewAggregateExpressions = rewriteContext.processedComponent.get().viewAggregateExpressions
 
     if (query.size > view.size) return RewriteFail.GROUP_BY_SIZE_UNMATCH(this)
     if (!isSubSetOf(query, view)) return RewriteFail.GROUP_BY_SIZE_UNMATCH(this)

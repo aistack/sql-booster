@@ -19,8 +19,8 @@ class ProjectMatcher(rewriteContext: RewriteContext) extends ExpressionMatcher {
     */
   override def compare: CompensationExpressions = {
 
-    val query = rewriteContext.processedComponent.queryProjectList
-    val view = rewriteContext.processedComponent.viewProjectList
+    val query = rewriteContext.processedComponent.get().queryProjectList
+    val view = rewriteContext.processedComponent.get().viewProjectList
     val ExpressionIntersectResp(queryLeft, viewLeft, _) = ExpressionSemanticEquals.process(query, view)
     // for now, we must make sure the queryLeft's columns(not alias) all in viewLeft.columns(not alias)
     val queryColumns = queryLeft.flatMap(extractAttributeReference)

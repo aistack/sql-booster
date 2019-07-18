@@ -1,11 +1,13 @@
 package org.apache.spark.sql.catalyst.optimizer.rewrite.rule
 
+import java.util.concurrent.atomic.AtomicReference
+
 import org.apache.spark.internal.Logging
-import org.apache.spark.sql.catalyst.expressions.{Attribute, Expression}
+import org.apache.spark.sql.catalyst.expressions.{Attribute, AttributeReference, Expression}
 import org.apache.spark.sql.catalyst.optimizer.RewriteHelper
 import org.apache.spark.sql.catalyst.plans.logical.{Join, LogicalPlan}
 
-import scala.collection.mutable.ArrayBuffer
+import scala.collection.mutable
 
 
 /**
@@ -29,12 +31,12 @@ import scala.collection.mutable.ArrayBuffer
   * 3. Table(View) Matcher/Rewriter
   */
 trait RewriteMatchRule extends RewriteHelper {
-  def fetchView(plan: LogicalPlan): Seq[ViewLogicalPlan]
+  def fetchView(plan: LogicalPlan, rewriteContext: RewriteContext): Seq[ViewLogicalPlan]
 
-  def rewrite(plan: LogicalPlan): LogicalPlan
+  def rewrite(plan: LogicalPlan, rewriteContext: RewriteContext): LogicalPlan
 
   def buildPipeline[_](rewriteContext: RewriteContext, items: Seq[MatchOrRewrite]) = {
-    val pipeline = ArrayBuffer[PipelineItemExecutor]()
+    val pipeline = mutable.ArrayBuffer[PipelineItemExecutor]()
     items.grouped(2).foreach { items =>
       pipeline += PipelineItemExecutor(items(0).asInstanceOf[ExpressionMatcher], items(1).asInstanceOf[LogicalPlanRewrite])
     }
@@ -223,7 +225,9 @@ case class RewritedLeafLogicalPlan(inner: LogicalPlan) extends LogicalPlan {
 
 case class ViewLogicalPlan(tableLogicalPlan: LogicalPlan, viewCreateLogicalPlan: LogicalPlan)
 
-case class RewriteContext(viewLogicalPlan: ViewLogicalPlan, processedComponent: ProcessedComponent)
+case class RewriteContext(viewLogicalPlan: AtomicReference[ViewLogicalPlan], processedComponent: AtomicReference[ProcessedComponent],
+                          replacedARMapping: mutable.HashMap[AttributeReference, AttributeReference] =
+                          mutable.HashMap[AttributeReference, AttributeReference]())
 
 case class ProcessedComponent(
                                queryConjunctivePredicates: Seq[Expression] = Seq(),

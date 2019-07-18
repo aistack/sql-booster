@@ -10,7 +10,7 @@ import org.apache.spark.sql.catalyst.plans.logical.{Aggregate, LogicalPlan}
 class GroupByRewrite(rewriteContext: RewriteContext) extends LogicalPlanRewrite {
   override def rewrite(plan: LogicalPlan): LogicalPlan = {
 
-    val projectOrAggList = rewriteContext.viewLogicalPlan.tableLogicalPlan.output
+    val projectOrAggList = rewriteContext.viewLogicalPlan.get().tableLogicalPlan.output
 
     val newExpressions = _compensationExpressions.compensation.map { expr =>
       expr transformDown {

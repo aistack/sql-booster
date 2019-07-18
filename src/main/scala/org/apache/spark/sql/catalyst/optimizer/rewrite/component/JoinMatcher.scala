@@ -12,13 +12,11 @@ class JoinMatcher(rewriteContext: RewriteContext
   override def compare: CompensationExpressions = {
 
 
-    val viewJoin = rewriteContext.processedComponent.viewJoins.head
-    val queryJoin = rewriteContext.processedComponent.queryJoins.head
+    val viewJoin = rewriteContext.processedComponent.get().viewJoins.head
+    val queryJoin = rewriteContext.processedComponent.get().queryJoins.head
     // since the prediate condition will be pushed down into Join filter,
     // but we have compare them in Predicate Matcher/Rewrite step, so when compare Join,
     // we should clean the filter from Join
-    println(cleanJoinFilter(viewJoin))
-    println(cleanJoinFilter(queryJoin))
     if (!sameJoinPlan(cleanJoinFilter(viewJoin), cleanJoinFilter(queryJoin))) return RewriteFail.JOIN_UNMATCH(this)
     CompensationExpressions(true, Seq())
   }

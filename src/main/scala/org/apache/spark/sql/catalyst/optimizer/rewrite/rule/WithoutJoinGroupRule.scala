@@ -15,8 +15,8 @@ object WithoutJoinGroupRule {
 
 
 class WithoutJoinGroupRule extends RewriteMatchRule {
-  override def fetchView(plan: LogicalPlan): Seq[ViewLogicalPlan] = {
-
+  override def fetchView(plan: LogicalPlan, rewriteContext: RewriteContext): Seq[ViewLogicalPlan] = {
+    require(plan.resolved, "LogicalPlan must be resolved.")
 
     if (isAggExistsExists(plan) || isJoinExists(plan)) return Seq()
 
@@ -65,8 +65,8 @@ class WithoutJoinGroupRule extends RewriteMatchRule {
     * @param plan
     * @return
     */
-  override def rewrite(plan: LogicalPlan): LogicalPlan = {
-    val targetViewPlanOption = fetchView(plan)
+  override def rewrite(plan: LogicalPlan, rewriteContext: RewriteContext): LogicalPlan = {
+    val targetViewPlanOption = fetchView(plan, rewriteContext)
     if (targetViewPlanOption.isEmpty) return plan
 
     var shouldBreak = false
@@ -74,7 +74,8 @@ class WithoutJoinGroupRule extends RewriteMatchRule {
 
     targetViewPlanOption.foreach { targetViewPlan =>
       if (!shouldBreak) {
-        val res = _rewrite(plan, targetViewPlan)
+        rewriteContext.viewLogicalPlan.set(targetViewPlan)
+        val res = _rewrite(plan, rewriteContext)
         res match {
           case a@RewritedLogicalPlan(_, true) =>
             finalPlan = a
@@ -87,7 +88,7 @@ class WithoutJoinGroupRule extends RewriteMatchRule {
     finalPlan
   }
 
-  def _rewrite(plan: LogicalPlan, targetViewPlan: ViewLogicalPlan): LogicalPlan = {
+  def _rewrite(plan: LogicalPlan, rewriteContext: RewriteContext): LogicalPlan = {
 
     var queryConjunctivePredicates: Seq[Expression] = Seq()
     var viewConjunctivePredicates: Seq[Expression] = Seq()
@@ -104,7 +105,7 @@ class WithoutJoinGroupRule extends RewriteMatchRule {
         queryProjectList = projectList
     }
 
-    normalizePlan(targetViewPlan.viewCreateLogicalPlan) match {
+    normalizePlan(rewriteContext.viewLogicalPlan.get().viewCreateLogicalPlan) match {
       case Project(projectList, Filter(condition, _)) =>
         viewConjunctivePredicates = splitConjunctivePredicates(condition)
         viewProjectList = projectList
@@ -113,7 +114,7 @@ class WithoutJoinGroupRule extends RewriteMatchRule {
     }
 
 
-    val rewriteContext = new RewriteContext(targetViewPlan, ProcessedComponent(
+    rewriteContext.processedComponent.set(ProcessedComponent(
       queryConjunctivePredicates,
       viewConjunctivePredicates,
       queryProjectList,
@@ -138,7 +139,7 @@ class WithoutJoinGroupRule extends RewriteMatchRule {
       new ProjectMatcher(rewriteContext),
       new ProjectRewrite(rewriteContext),
       new TableNonOpMatcher(rewriteContext),
-      new TableOrViewRewrite(targetViewPlan)
+      new TableOrViewRewrite(rewriteContext)
 
     ))
 

@@ -4,6 +4,7 @@ import org.apache.spark.sql.catalyst.catalog.HiveTableRelation
 import org.apache.spark.sql.catalyst.expressions.aggregate.AggregateExpression
 import org.apache.spark.sql.catalyst.expressions.{Alias, And, AttributeReference, EqualNullSafe, EqualTo, Exists, ExprId, Expression, ListQuery, NamedLambdaVariable, PredicateHelper, ScalarSubquery}
 import org.apache.spark.sql.catalyst.plans.logical._
+import org.apache.spark.sql.execution.LogicalRDD
 import org.apache.spark.sql.execution.datasources.LogicalRelation
 import tech.mlsql.sqlbooster.meta.TableHolder
 
@@ -121,6 +122,9 @@ trait RewriteHelper extends PredicateHelper {
       case a@SubqueryAlias(_, LogicalRelation(_, _, _, _)) =>
         tables += TableHolder(null, a.name.unquotedString, a.output, a)
         a
+      case a@SubqueryAlias(_, LogicalRDD(_, _, _, _, _)) =>
+        tables += TableHolder(null, a.name.unquotedString, a.output, a)
+        a
       case m@HiveTableRelation(tableMeta, _, _) =>
         tables += TableHolder(tableMeta.database, tableMeta.identifier.table, m.output, m)
         m
@@ -224,5 +228,5 @@ trait RewriteHelper extends PredicateHelper {
     }
     _isAggExistsExists
   }
-
+  
 }

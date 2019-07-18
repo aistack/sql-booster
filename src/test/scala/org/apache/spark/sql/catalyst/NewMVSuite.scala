@@ -49,6 +49,7 @@ class NewMVSuite extends BaseSuite {
       """
         |CREATE TABLE IF NOT EXISTS src (key INT, value STRING) USING hive
       """.stripMargin)
+
   }
 
   test("test 1") {
@@ -69,10 +70,41 @@ class NewMVSuite extends BaseSuite {
         |where emps.empid=1
       """.stripMargin))
 
-    println(rewrite)
+    assert(schemaReg.genSQL(rewrite) == "SELECT `empid` FROM emps_mv WHERE `empid` = CAST(1 AS BIGINT)")
 
-    println(schemaReg.genPrettySQL(rewrite))
 
+    val rewrite2 = MaterializedViewOptimizeRewrite.execute(schemaReg.toLogicalPlan(
+      """
+        |SELECT e.empid
+        |FROM emps e
+        |JOIN depts d
+        |ON e.deptno = d.deptno
+        |where e.empid=1
+      """.stripMargin))
+
+    assert(schemaReg.genSQL(rewrite2) == "SELECT `empid` FROM emps_mv WHERE `empid` = CAST(1 AS BIGINT)")
+
+
+  }
+  test("test 2") {
+
+    schemaReg.createMV("emps_mv",
+      """
+        |SELECT empid
+        |FROM emps
+        |JOIN depts ON depts.deptno = emps.deptno
+      """.stripMargin)
+
+    val rewrite3 = MaterializedViewOptimizeRewrite.execute(schemaReg.toLogicalPlan(
+      """
+        |select * from (SELECT e.empid
+        |FROM emps e
+        |JOIN depts d
+        |ON e.deptno = d.deptno
+        |where e.empid=1) as a where a.empid=2
+      """.stripMargin))
+    println(schemaReg.genSQL(rewrite3) == "SELECT a.`empid` FROM (SELECT `empid` FROM emps_mv WHERE `empid` = CAST(1 AS BIGINT)) a WHERE a.`empid` = CAST(2 AS BIGINT)")
+    
   }
 
 }

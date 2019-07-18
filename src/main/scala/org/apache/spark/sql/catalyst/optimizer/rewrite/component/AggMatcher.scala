@@ -32,8 +32,8 @@ class AggMatcher(rewriteContext: RewriteContext
     */
   override def compare: CompensationExpressions = {
 
-    val query = rewriteContext.processedComponent.queryAggregateExpressions
-    val view = rewriteContext.processedComponent.viewAggregateExpressions
+    val query = rewriteContext.processedComponent.get().queryAggregateExpressions
+    val view = rewriteContext.processedComponent.get().viewAggregateExpressions
 
     // let's take care the first situation, if there are count(*) in query, then
     // count(*) should also be in view and we should replace it with sum(count_view)
@@ -42,7 +42,7 @@ class AggMatcher(rewriteContext: RewriteContext
 
     if (queryCountStar.size > 0 && viewCountStar == 0) return RewriteFail.AGG_NUMBER_UNMATCH(this)
 
-    val viewProjectOrAggList = rewriteContext.viewLogicalPlan.tableLogicalPlan.output
+    val viewProjectOrAggList = rewriteContext.viewLogicalPlan.get().tableLogicalPlan.output
 
 
     /**

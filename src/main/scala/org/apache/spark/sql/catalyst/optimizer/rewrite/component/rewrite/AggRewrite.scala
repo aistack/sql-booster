@@ -1,7 +1,7 @@
 package org.apache.spark.sql.catalyst.optimizer.rewrite.component.rewrite
 
 import org.apache.spark.sql.catalyst.expressions.{AttributeReference, NamedExpression}
-import org.apache.spark.sql.catalyst.optimizer.rewrite.rule.{LogicalPlanRewrite, RewriteContext, RewritedLeafLogicalPlan, ViewLogicalPlan}
+import org.apache.spark.sql.catalyst.optimizer.rewrite.rule.{LogicalPlanRewrite, RewriteContext, RewritedLeafLogicalPlan}
 import org.apache.spark.sql.catalyst.plans.logical.{Aggregate, LogicalPlan}
 
 /**
@@ -9,12 +9,14 @@ import org.apache.spark.sql.catalyst.plans.logical.{Aggregate, LogicalPlan}
   */
 class AggRewrite(rewriteContext: RewriteContext) extends LogicalPlanRewrite {
   override def rewrite(plan: LogicalPlan): LogicalPlan = {
-    val projectOrAggList = rewriteContext.viewLogicalPlan.tableLogicalPlan.output
+    val projectOrAggList = rewriteContext.viewLogicalPlan.get().tableLogicalPlan.output
 
     val newExpressions = _compensationExpressions.compensation.map { expr =>
       expr transformDown {
         case a@AttributeReference(name, dt, _, _) =>
-          extractAttributeReferenceFromFirstLevel(projectOrAggList).filter(f => attributeReferenceEqual(a, f)).head
+          val newAr = extractAttributeReferenceFromFirstLevel(projectOrAggList).filter(f => attributeReferenceEqual(a, f)).head
+          rewriteContext.replacedARMapping += (a.withQualifier(Seq()) -> newAr)
+          newAr
       }
     }.map(_.asInstanceOf[NamedExpression])
     val newPlan = plan transformDown {
