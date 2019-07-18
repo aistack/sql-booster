@@ -3,6 +3,7 @@ package org.apache.spark.sql.catalyst.optimizer
 import org.apache.spark.sql.catalyst.catalog.HiveTableRelation
 import org.apache.spark.sql.catalyst.expressions.aggregate.AggregateExpression
 import org.apache.spark.sql.catalyst.expressions.{Alias, And, AttributeReference, EqualNullSafe, EqualTo, Exists, ExprId, Expression, ListQuery, NamedLambdaVariable, PredicateHelper, ScalarSubquery}
+import org.apache.spark.sql.catalyst.optimizer.rewrite.rule.{ProcessedComponent, RewriteContext}
 import org.apache.spark.sql.catalyst.plans.logical._
 import org.apache.spark.sql.execution.LogicalRDD
 import org.apache.spark.sql.execution.datasources.LogicalRelation
@@ -228,5 +229,106 @@ trait RewriteHelper extends PredicateHelper {
     }
     _isAggExistsExists
   }
+
+  def generateRewriteContext(plan: LogicalPlan, rewriteContext: RewriteContext) = {
+    var queryConjunctivePredicates: Seq[Expression] = Seq()
+    var viewConjunctivePredicates: Seq[Expression] = Seq()
+
+    var queryProjectList: Seq[Expression] = Seq()
+    var viewProjectList: Seq[Expression] = Seq()
+
+    var queryGroupingExpressions: Seq[Expression] = Seq()
+    var viewGroupingExpressions: Seq[Expression] = Seq()
+
+    var queryAggregateExpressions: Seq[Expression] = Seq()
+    var viewAggregateExpressions: Seq[Expression] = Seq()
+
+    val viewJoins = ArrayBuffer[Join]()
+    val queryJoins = ArrayBuffer[Join]()
+
+    val queryNormalizePlan = normalizePlan(plan)
+    val viewNormalizePlan = normalizePlan(rewriteContext.viewLogicalPlan.get.viewCreateLogicalPlan)
+    //collect all predicates
+    viewNormalizePlan transformDown {
+      case a@Filter(condition, _) =>
+        viewConjunctivePredicates ++= splitConjunctivePredicates(condition)
+        a
+    }
+
+    queryNormalizePlan transformDown {
+      case a@Filter(condition, _) =>
+        queryConjunctivePredicates ++= splitConjunctivePredicates(condition)
+        a
+    }
+
+    // check projectList and where condition
+    normalizePlan(plan) match {
+      case Project(projectList, Filter(condition, _)) =>
+        queryConjunctivePredicates = splitConjunctivePredicates(condition)
+        queryProjectList = projectList
+      case Project(projectList, _) =>
+        queryProjectList = projectList
+
+      case Aggregate(groupingExpressions, aggregateExpressions, Filter(condition, _)) => {
+        queryConjunctivePredicates = splitConjunctivePredicates(condition)
+        queryGroupingExpressions = groupingExpressions
+        queryAggregateExpressions = aggregateExpressions
+      }
+      case Aggregate(groupingExpressions, aggregateExpressions, _) =>
+        queryGroupingExpressions = groupingExpressions
+        queryAggregateExpressions = aggregateExpressions
+
+
+    }
+
+    normalizePlan(rewriteContext.viewLogicalPlan.get().viewCreateLogicalPlan) match {
+      case Project(projectList, Filter(condition, _)) =>
+        viewConjunctivePredicates = splitConjunctivePredicates(condition)
+        viewProjectList = projectList
+      case Project(projectList, _) =>
+        viewProjectList = projectList
+
+      case Aggregate(groupingExpressions, aggregateExpressions, Filter(condition, _)) =>
+        viewConjunctivePredicates = splitConjunctivePredicates(condition)
+        viewGroupingExpressions = groupingExpressions
+        viewAggregateExpressions = aggregateExpressions
+
+      case Aggregate(groupingExpressions, aggregateExpressions, _) =>
+        viewGroupingExpressions = groupingExpressions
+        viewAggregateExpressions = aggregateExpressions
+    }
+
+    if (isJoinExists(plan)) {
+      // get the first level join
+      viewJoins += extractFirstLevelJoin(viewNormalizePlan)
+      queryJoins += extractFirstLevelJoin(queryNormalizePlan)
+    }
+
+
+    rewriteContext.processedComponent.set(ProcessedComponent(
+      queryConjunctivePredicates,
+      viewConjunctivePredicates,
+      queryProjectList,
+      viewProjectList,
+      queryGroupingExpressions,
+      viewGroupingExpressions,
+      queryAggregateExpressions,
+      viewAggregateExpressions,
+      viewJoins,
+      queryJoins
+    ))
+
+  }
+
+  def extractFirstLevelJoin(plan: LogicalPlan) = {
+    plan match {
+      case p@Project(_, join@Join(_, _, _, _)) => join
+      case p@Project(_, Filter(_, join@Join(_, _, _, _))) => join
+      case p@Aggregate(_, _, Filter(_, join@Join(_, _, _, _))) => join
+      case p@Aggregate(_, _, join@Join(_, _, _, _)) => join
+    }
+  }
+
   
+
 }

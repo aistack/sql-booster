@@ -52,7 +52,7 @@ class NewMVSuite extends BaseSuite {
 
   }
 
-  test("test 1") {
+  test("test join") {
 
     schemaReg.createMV("emps_mv",
       """
@@ -70,7 +70,8 @@ class NewMVSuite extends BaseSuite {
         |where emps.empid=1
       """.stripMargin))
 
-    assert(schemaReg.genSQL(rewrite) == "SELECT `empid` FROM emps_mv WHERE `empid` = CAST(1 AS BIGINT)")
+    assert(schemaReg.genSQL(rewrite)
+      == "SELECT `empid` FROM emps_mv WHERE `empid` = CAST(1 AS BIGINT)")
 
 
     val rewrite2 = MaterializedViewOptimizeRewrite.execute(schemaReg.toLogicalPlan(
@@ -82,18 +83,8 @@ class NewMVSuite extends BaseSuite {
         |where e.empid=1
       """.stripMargin))
 
-    assert(schemaReg.genSQL(rewrite2) == "SELECT `empid` FROM emps_mv WHERE `empid` = CAST(1 AS BIGINT)")
-
-
-  }
-  test("test 2") {
-
-    schemaReg.createMV("emps_mv",
-      """
-        |SELECT empid
-        |FROM emps
-        |JOIN depts ON depts.deptno = emps.deptno
-      """.stripMargin)
+    assert(schemaReg.genSQL(rewrite2)
+      == "SELECT `empid` FROM emps_mv WHERE `empid` = CAST(1 AS BIGINT)")
 
     val rewrite3 = MaterializedViewOptimizeRewrite.execute(schemaReg.toLogicalPlan(
       """
@@ -103,8 +94,61 @@ class NewMVSuite extends BaseSuite {
         |ON e.deptno = d.deptno
         |where e.empid=1) as a where a.empid=2
       """.stripMargin))
-    println(schemaReg.genSQL(rewrite3) == "SELECT a.`empid` FROM (SELECT `empid` FROM emps_mv WHERE `empid` = CAST(1 AS BIGINT)) a WHERE a.`empid` = CAST(2 AS BIGINT)")
-    
+    assert(schemaReg.genSQL(rewrite3)
+      == "SELECT a.`empid` FROM (SELECT `empid` FROM emps_mv WHERE `empid` = CAST(1 AS BIGINT)) a WHERE a.`empid` = CAST(2 AS BIGINT)")
+
+
+  }
+  test("test group ") {
+    schemaReg.createMV("emps_mv",
+      """
+        |SELECT empid, deptno
+        |FROM emps
+        |WHERE deptno > 5
+        |GROUP BY empid, deptno
+      """.stripMargin)
+
+    val rewrite3 = MaterializedViewOptimizeRewrite.execute(schemaReg.toLogicalPlan(
+      """
+        |SELECT deptno
+        |FROM emps
+        |WHERE deptno > 10
+        |GROUP BY deptno
+      """.stripMargin))
+
+    assert(schemaReg.genSQL(rewrite3) == "SELECT `deptno` FROM emps_mv WHERE `deptno` > CAST(10 AS BIGINT) GROUP BY `deptno`")
+
+    val rewrite4 = MaterializedViewOptimizeRewrite.execute(schemaReg.toLogicalPlan(
+      """
+        |SELECT deptno
+        |FROM emps
+        |WHERE deptno > 4
+        |GROUP BY deptno
+      """.stripMargin))
+
+    assert(schemaReg.genSQL(rewrite4) == "SELECT emps.`deptno` FROM emps WHERE emps.`deptno` > CAST(4 AS BIGINT) GROUP BY emps.`deptno`")
+
+    val rewrite5 = MaterializedViewOptimizeRewrite.execute(schemaReg.toLogicalPlan(
+      """
+        |SELECT deptno
+        |FROM emps
+        |WHERE deptno > 5
+        |GROUP BY deptno
+      """.stripMargin))
+
+    assert(schemaReg.genSQL(rewrite5) == "SELECT `deptno` FROM emps_mv WHERE `deptno` > CAST(5 AS BIGINT) GROUP BY `deptno`")
+
+    val rewrite6 = MaterializedViewOptimizeRewrite.execute(schemaReg.toLogicalPlan(
+      """
+        |SELECT deptno
+        |FROM emps
+        |WHERE deptno > 5
+        |AND deptno <10
+        |GROUP BY deptno
+      """.stripMargin))
+
+    assert(schemaReg.genSQL(rewrite6) == "SELECT `deptno` FROM emps_mv WHERE `deptno` > CAST(5 AS BIGINT) AND `deptno` < CAST(10 AS BIGINT) GROUP BY `deptno`")
+
   }
 
 }

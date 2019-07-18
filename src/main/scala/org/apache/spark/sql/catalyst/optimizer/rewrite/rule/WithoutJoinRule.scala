@@ -1,6 +1,5 @@
 package org.apache.spark.sql.catalyst.optimizer.rewrite.rule
 
-import org.apache.spark.sql.catalyst.expressions.Expression
 import org.apache.spark.sql.catalyst.optimizer.rewrite.component.rewrite.{AggRewrite, GroupByRewrite, PredicateRewrite, TableOrViewRewrite}
 import org.apache.spark.sql.catalyst.optimizer.rewrite.component.{AggMatcher, GroupByMatcher, PredicateMatcher, TableNonOpMatcher}
 import org.apache.spark.sql.catalyst.plans.logical._
@@ -64,55 +63,7 @@ class WithoutJoinRule extends RewriteMatchRule {
 
   def _rewrite(plan: LogicalPlan, rewriteContext: RewriteContext): LogicalPlan = {
 
-
-    var queryConjunctivePredicates: Seq[Expression] = Seq()
-    var viewConjunctivePredicates: Seq[Expression] = Seq()
-
-    var queryProjectList: Seq[Expression] = Seq()
-    var viewProjectList: Seq[Expression] = Seq()
-
-    var queryGroupingExpressions: Seq[Expression] = Seq()
-    var viewGroupingExpressions: Seq[Expression] = Seq()
-
-    var queryAggregateExpressions: Seq[Expression] = Seq()
-    var viewAggregateExpressions: Seq[Expression] = Seq()
-
-    // check projectList and where condition
-    normalizePlan(plan) match {
-      case Project(projectList, Filter(condition, _)) =>
-        queryConjunctivePredicates = splitConjunctivePredicates(condition)
-        queryProjectList = projectList
-      case Project(projectList, _) =>
-        queryProjectList = projectList
-      case Aggregate(groupingExpressions, aggregateExpressions, _) =>
-        queryGroupingExpressions = groupingExpressions
-        queryAggregateExpressions = aggregateExpressions
-    }
-
-    normalizePlan(rewriteContext.viewLogicalPlan.get().viewCreateLogicalPlan) match {
-      case Project(projectList, Filter(condition, _)) =>
-        viewConjunctivePredicates = splitConjunctivePredicates(condition)
-        viewProjectList = projectList
-      case Project(projectList, _) =>
-        viewProjectList = projectList
-      case Aggregate(groupingExpressions, aggregateExpressions, _) =>
-        viewGroupingExpressions = groupingExpressions
-        viewAggregateExpressions = aggregateExpressions
-    }
-
-    rewriteContext.processedComponent.set(ProcessedComponent(
-      queryConjunctivePredicates,
-      viewConjunctivePredicates,
-      queryProjectList,
-      viewProjectList,
-      Seq(),
-      Seq(),
-      Seq(),
-      Seq(),
-      Seq(),
-      Seq()
-    ))
-
+    generateRewriteContext(plan, rewriteContext)
     /**
       * Three match/rewrite steps:
       *   1. Predicate
