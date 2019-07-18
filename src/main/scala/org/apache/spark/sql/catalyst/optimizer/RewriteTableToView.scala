@@ -6,6 +6,8 @@ import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.optimizer.rewrite.rule._
 import org.apache.spark.sql.catalyst.plans.logical._
 import org.apache.spark.sql.catalyst.rules.Rule
+import org.apache.spark.sql.execution.LogicalRDD
+import org.apache.spark.sql.execution.datasources.LogicalRelation
 
 import scala.collection.mutable.ArrayBuffer
 
@@ -52,7 +54,8 @@ object RewriteTableToViews extends Rule[LogicalPlan] with PredicateHelper {
         rewrite(plan, rewriteContext)
       } else {
         plan.transformUp {
-          case a if isSPJG(a) => rewrite(a, rewriteContext)
+          case a if isSPJG(a) =>
+            rewrite(a, rewriteContext)
         }
       }
       if (currentPlan != lastPlan) {
@@ -99,6 +102,7 @@ object RewriteTableToViews extends Rule[LogicalPlan] with PredicateHelper {
     * @return
     */
   private def isSPJG(plan: LogicalPlan): Boolean = {
+    println(plan)
     var isMatch = true
     plan transformDown {
       case a@SubqueryAlias(_, Project(_, _)) =>
@@ -120,6 +124,10 @@ object RewriteTableToViews extends Rule[LogicalPlan] with PredicateHelper {
       case p@Aggregate(_, _, Filter(_, _)) => true
       case p@Project(_, Filter(_, _)) => true
       case p@Aggregate(_, _, Join(_, _, _, _)) => true
+      case p@Aggregate(_, _, SubqueryAlias(_, LogicalRDD(_, _, _, _, _))) => true
+      case p@Aggregate(_, _, SubqueryAlias(_, LogicalRelation(_, _, _, _))) => true
+      case p@Project(_, SubqueryAlias(_, LogicalRDD(_, _, _, _, _))) => true
+      case p@Project(_, SubqueryAlias(_, LogicalRelation(_, _, _, _))) => true
       case _ => false
     }
   }

@@ -1,7 +1,7 @@
 package org.apache.spark.sql.catalyst.optimizer.rewrite.component
 
 import org.apache.spark.sql.catalyst.expressions.aggregate.{AggregateExpression, Average, Count, Sum}
-import org.apache.spark.sql.catalyst.expressions.{Alias, Divide, Expression, Literal}
+import org.apache.spark.sql.catalyst.expressions.{Alias, AttributeReference, Divide, Expression, Literal}
 import org.apache.spark.sql.catalyst.optimizer.rewrite.rule._
 import org.apache.spark.sql.types.IntegerType
 
@@ -80,24 +80,27 @@ class AggMatcher(rewriteContext: RewriteContext
 
 
     val success = exactlySame.map { item =>
-      view.map { f =>
-        if (cleanAlias(f).semanticEquals(cleanAlias(item))) 1 else 0
-      }.sum
-    }.sum >= exactlySame.size
+      if (view.filter { f =>
+        cleanAlias(f).semanticEquals(cleanAlias(item))
+      }.size > 0) 1 else 0
+    }.sum == exactlySame.size
 
     if (!success) return RewriteFail.AGG_COLUMNS_UNMATCH(this)
 
     var queryReplaceAgg = query
 
     queryReplaceAgg = queryReplaceAgg.map { item =>
-      item transformDown {
+      item transformUp  {
         case a@Alias(agg@AggregateExpression(Average(ar@_), _, _, _), name) => a
         case a@Alias(agg@AggregateExpression(Count(_), _, _, _), name) => a
         case a@Alias(agg@AggregateExpression(_, _, _, _), name) =>
           val (vItem, index) = view.zipWithIndex.filter { case (vItem, index) =>
             cleanAlias(vItem).semanticEquals(cleanAlias(a))
           }.head
-          Alias(viewProjectOrAggList(index), name)()
+          val newVItem = vItem transformDown {
+            case a@AttributeReference(_, _, _, _) => viewProjectOrAggList(index)
+          }
+          Alias(cleanAlias(newVItem), name)()
       }
     }
 

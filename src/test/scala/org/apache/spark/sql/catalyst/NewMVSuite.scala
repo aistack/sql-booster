@@ -151,4 +151,22 @@ class NewMVSuite extends BaseSuite {
 
   }
 
+  test("test agg") {
+    schemaReg.createMV("emps_mv",
+      """
+        |SELECT empid, deptno, COUNT(*) AS c, SUM(salary) AS s
+        |FROM emps
+        |GROUP BY empid, deptno
+      """.stripMargin)
+
+    val rewrite1 = MaterializedViewOptimizeRewrite.execute(schemaReg.toLogicalPlan(
+      """
+        |SELECT deptno, COUNT(*) AS c, SUM(salary) AS m
+        |FROM emps
+        |GROUP BY deptno
+      """.stripMargin))
+
+    assert(schemaReg.genSQL(rewrite1) == "SELECT `deptno`, sum(`c`) AS `c`, sum(`s`) AS `m` FROM emps_mv GROUP BY `deptno`")
+  }
+
 }
