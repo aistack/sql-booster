@@ -6,8 +6,6 @@ import org.apache.spark.sql.catalyst.optimizer.rewrite.component.{AggMatcher, Gr
 import org.apache.spark.sql.catalyst.plans.logical._
 import tech.mlsql.sqlbooster.meta.ViewCatalyst
 
-import scala.collection.mutable.ArrayBuffer
-
 /**
   * 2019-07-15 WilliamZhu(allwefantasy@gmail.com)
   */
@@ -100,6 +98,19 @@ class WithoutJoinRule extends RewriteMatchRule {
         viewAggregateExpressions = aggregateExpressions
     }
 
+    val rewriteContext = new RewriteContext(targetViewPlan, ProcessedComponent(
+      queryConjunctivePredicates,
+      viewConjunctivePredicates,
+      queryProjectList,
+      viewProjectList,
+      Seq(),
+      Seq(),
+      Seq(),
+      Seq(),
+      Seq(),
+      Seq()
+    ))
+
     /**
       * Three match/rewrite steps:
       *   1. Predicate
@@ -107,28 +118,17 @@ class WithoutJoinRule extends RewriteMatchRule {
       *   3. Project
       *   4. Table(View)
       */
-    val pipeline = ArrayBuffer[PipelineItemExecutor]()
+    val pipeline = buildPipeline(rewriteContext: RewriteContext, Seq(
+      new PredicateMatcher(rewriteContext),
+      new PredicateRewrite(rewriteContext),
+      new GroupByMatcher(rewriteContext),
+      new GroupByRewrite(rewriteContext),
+      new AggMatcher(rewriteContext),
+      new AggRewrite(rewriteContext),
+      new TableNonOpMatcher(rewriteContext),
+      new TableOrViewRewrite(targetViewPlan)
 
-
-    val predicateMatcher = new PredicateMatcher(targetViewPlan, viewProjectList, queryConjunctivePredicates, viewConjunctivePredicates)
-    val predicateRewrite = new PredicateRewrite(targetViewPlan)
-
-    pipeline += PipelineItemExecutor(predicateMatcher, predicateRewrite)
-
-    val groupMatcher = new GroupByMatcher(targetViewPlan, viewAggregateExpressions, queryGroupingExpressions, viewGroupingExpressions)
-    val groupRewrite = new GroupByRewrite(targetViewPlan)
-
-    pipeline += PipelineItemExecutor(groupMatcher, groupRewrite)
-
-    val aggMatcher = new AggMatcher(targetViewPlan, queryAggregateExpressions, viewAggregateExpressions)
-    val aggRewrite = new AggRewrite(targetViewPlan)
-
-    pipeline += PipelineItemExecutor(aggMatcher, aggRewrite)
-
-    val tableMatcher = new TableNonOpMatcher()
-    val tableRewrite = new TableOrViewRewrite(targetViewPlan)
-
-    pipeline += PipelineItemExecutor(tableMatcher, tableRewrite)
+    ))
 
     /**
       * When we are rewriting plan, any step fails, we should return the original plan.

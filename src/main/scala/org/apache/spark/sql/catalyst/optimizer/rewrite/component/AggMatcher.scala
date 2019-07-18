@@ -2,7 +2,7 @@ package org.apache.spark.sql.catalyst.optimizer.rewrite.component
 
 import org.apache.spark.sql.catalyst.expressions.aggregate.{AggregateExpression, Average, Count, Sum}
 import org.apache.spark.sql.catalyst.expressions.{Alias, Divide, Expression, Literal}
-import org.apache.spark.sql.catalyst.optimizer.rewrite.rule.{CompensationExpressions, ExpressionMatcher, RewriteFail, ViewLogicalPlan}
+import org.apache.spark.sql.catalyst.optimizer.rewrite.rule._
 import org.apache.spark.sql.types.IntegerType
 
 import scala.collection.mutable.ArrayBuffer
@@ -10,9 +10,7 @@ import scala.collection.mutable.ArrayBuffer
 /**
   * 2019-07-15 WilliamZhu(allwefantasy@gmail.com)
   */
-class AggMatcher(viewLogicalPlan: ViewLogicalPlan,
-                 query: Seq[Expression],
-                 view: Seq[Expression]
+class AggMatcher(rewriteContext: RewriteContext
                 ) extends ExpressionMatcher {
   /**
     * when the view/query both has count(*), and the group by condition in query isSubset(not equal) of view,
@@ -34,6 +32,9 @@ class AggMatcher(viewLogicalPlan: ViewLogicalPlan,
     */
   override def compare: CompensationExpressions = {
 
+    val query = rewriteContext.processedComponent.queryAggregateExpressions
+    val view = rewriteContext.processedComponent.viewAggregateExpressions
+
     // let's take care the first situation, if there are count(*) in query, then
     // count(*) should also be in view and we should replace it with sum(count_view)
     val queryCountStar = getCountStartList(query)
@@ -41,7 +42,7 @@ class AggMatcher(viewLogicalPlan: ViewLogicalPlan,
 
     if (queryCountStar.size > 0 && viewCountStar == 0) return RewriteFail.AGG_NUMBER_UNMATCH(this)
 
-    val viewProjectOrAggList = viewLogicalPlan.tableLogicalPlan.output
+    val viewProjectOrAggList = rewriteContext.viewLogicalPlan.tableLogicalPlan.output
 
 
     /**

@@ -1,44 +1,54 @@
 package org.apache.spark.sql.catalyst
 
-import com.alibaba.druid.util.JdbcConstants
-import org.apache.spark.sql.Row
+import java.io.File
+
+import org.apache.commons.io.FileUtils
+import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.catalyst.expressions.PredicateHelper
-import org.apache.spark.sql.catalyst.plans.logical.LogicalPlan
-import org.apache.spark.sql.catalyst.sqlgenerator.{BasicSQLDialect, LogicalPlanSQL}
-import org.apache.spark.sql.streaming.StreamTest
-import tech.mlsql.sqlbooster.db.RDSchema
-import tech.mlsql.sqlbooster.meta.ViewCatalyst
+import org.apache.spark.sql.catalyst.optimizer.ConvertToLocalRelation
+import org.apache.spark.sql.internal.SQLConf
+import org.apache.spark.sql.internal.StaticSQLConf.CATALOG_IMPLEMENTATION
+import org.apache.spark.{DebugFilesystem, SparkConf}
+import org.scalatest.{BeforeAndAfterAll, FunSuite}
+import tech.mlsql.sqlbooster.SchemaRegistry
 
 /**
   * 2019-07-18 WilliamZhu(allwefantasy@gmail.com)
   */
-class BaseSuite extends StreamTest with PredicateHelper {
-  def createTable(createSQL: String) = {
-    val rd = new RDSchema(JdbcConstants.MYSQL)
-    val tableName = rd.createTable(createSQL)
-    val schema = rd.getTableSchema(tableName)
-    val df = spark.createDataFrame(spark.sparkContext.emptyRDD[Row], schema)
-    df.createOrReplaceTempView(tableName)
-    ViewCatalyst.meta.registerTableFromLogicalPlan(tableName, df.logicalPlan)
+class BaseSuite extends FunSuite
+  with BeforeAndAfterAll with PredicateHelper {
+  var spark: SparkSession = _
+  var schemaReg: SchemaRegistry = null
+
+  def init(): Unit = {
+    FileUtils.deleteDirectory(new File("./metastore_db"))
+    FileUtils.deleteDirectory(new File("/tmp/spark-warehouse"))
+    spark = SparkSession.builder().
+      config(sparkConf).
+      master("local[*]").
+      appName("base-test").
+      enableHiveSupport().getOrCreate()
+    schemaReg = new SchemaRegistry(spark)
   }
 
-  def createMV(viewName: String, viewCreate: String) = {
-    val createViewTable1 = spark.sql(viewCreate)
-    val df = spark.createDataFrame(spark.sparkContext.emptyRDD[Row], createViewTable1.schema)
-    df.createOrReplaceTempView(viewName)
-    ViewCatalyst.meta.registerMaterializedViewFromLogicalPlan(viewName, df.logicalPlan, createViewTable1.logicalPlan)
+  override def afterAll(): Unit = {
+    //SparkSession.cleanupAnyExistingSession()
+    spark.close()
   }
 
-  def toLogicalPlan(sql: String) = {
-    val temp = spark.sql(sql).queryExecution.analyzed
-    println(s"original:\n${temp}")
-    temp
+  def sparkConf = {
+    new SparkConf()
+      .set("spark.hadoop.fs.file.impl", classOf[DebugFilesystem].getName)
+      .set("spark.unsafe.exceptionOnMemoryLeak", "true")
+      .set(SQLConf.CODEGEN_FALLBACK.key, "false")
+      // Disable ConvertToLocalRelation for better test coverage. Test cases built on
+      // LocalRelation will exercise the optimization rules better by disabling it as
+      // this rule may potentially block testing of other optimization rules such as
+      // ConstantPropagation etc.
+      .set(SQLConf.OPTIMIZER_EXCLUDED_RULES.key, ConvertToLocalRelation.ruleName)
+      .set(CATALOG_IMPLEMENTATION.key, "hive")
+      .set("spark.sql.warehouse.dir", "/tmp/spark-warehouse")
   }
 
-  def genSQL(lp: LogicalPlan) = {
-    println(s"rewrite:\n${lp}")
-    val temp = new LogicalPlanSQL(lp, new BasicSQLDialect).toSQL
-    println(s"sql:${temp}")
-    temp
-  }
+
 }

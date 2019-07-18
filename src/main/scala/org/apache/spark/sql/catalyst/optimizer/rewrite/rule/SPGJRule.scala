@@ -96,6 +96,39 @@ class SPGJRule extends RewriteMatchRule {
 
   def _rewrite(plan: LogicalPlan, targetViewPlan: ViewLogicalPlan): LogicalPlan = {
 
+    val rewriteContext = generateRewriteContext(plan, targetViewPlan)
+
+    val pipeline = buildPipeline(rewriteContext: RewriteContext, Seq(
+      new PredicateMatcher(rewriteContext),
+      new SPGJPredicateRewrite(rewriteContext),
+      new GroupByMatcher(rewriteContext),
+      new GroupByRewrite(rewriteContext),
+      new AggMatcher(rewriteContext),
+      new AggRewrite(rewriteContext),
+      new JoinMatcher(rewriteContext),
+      new JoinRewrite(rewriteContext),
+      new ProjectMatcher(rewriteContext),
+      new ProjectRewrite(rewriteContext)
+
+    ))
+
+    /**
+      * When we are rewriting plan, any step fails, we should return the original plan.
+      * So we should check the mark in RewritedLogicalPlan is final success or fail.
+      */
+    LogicalPlanRewritePipeline(pipeline).rewrite(plan)
+  }
+
+  def extractFirstLevelJoin(plan: LogicalPlan) = {
+    plan match {
+      case p@Project(_, join@Join(_, _, _, _)) => join
+      case p@Project(_, Filter(_, join@Join(_, _, _, _))) => join
+      case p@Aggregate(_, _, Filter(_, join@Join(_, _, _, _))) => join
+      case p@Aggregate(_, _, join@Join(_, _, _, _)) => join
+    }
+  }
+
+  def generateRewriteContext(plan: LogicalPlan, targetViewPlan: ViewLogicalPlan) = {
     var queryConjunctivePredicates: Seq[Expression] = Seq()
     var viewConjunctivePredicates: Seq[Expression] = Seq()
 
@@ -151,47 +184,18 @@ class SPGJRule extends RewriteMatchRule {
     viewJoins += extractFirstLevelJoin(viewNormalizePlan)
     queryJoins += extractFirstLevelJoin(queryNormalizePlan)
 
-    val pipeline = ArrayBuffer[PipelineItemExecutor]()
-
-    val predicateMatcher = new PredicateMatcher(targetViewPlan, viewProjectList, queryConjunctivePredicates, viewConjunctivePredicates)
-    val predicateRewrite = new SPGJPredicateRewrite(targetViewPlan)
-
-    pipeline += PipelineItemExecutor(predicateMatcher, predicateRewrite)
-
-    val groupMatcher = new GroupByMatcher(targetViewPlan, viewAggregateExpressions, queryGroupingExpressions, viewGroupingExpressions)
-    val groupRewrite = new GroupByRewrite(targetViewPlan)
-
-    pipeline += PipelineItemExecutor(groupMatcher, groupRewrite)
-
-    val aggMatcher = new AggMatcher(targetViewPlan, queryAggregateExpressions, viewAggregateExpressions)
-    val aggRewrite = new AggRewrite(targetViewPlan)
-
-    pipeline += PipelineItemExecutor(aggMatcher, aggRewrite)
-
-    val joinMatcher = new JoinMatcher(targetViewPlan, viewJoins.head, queryJoins.head)
-    val joinRewrite = new JoinRewrite(targetViewPlan)
-
-    pipeline += PipelineItemExecutor(joinMatcher, joinRewrite)
-
-    val projectMatcher = new ProjectMatcher(targetViewPlan, queryProjectList, viewProjectList)
-    val projectRewrite = new ProjectRewrite(targetViewPlan)
-
-    pipeline += PipelineItemExecutor(projectMatcher, projectRewrite)
-
-    /**
-      * When we are rewriting plan, any step fails, we should return the original plan.
-      * So we should check the mark in RewritedLogicalPlan is final success or fail.
-      */
-    LogicalPlanRewritePipeline(pipeline).rewrite(plan)
-  }
-
-  def extractFirstLevelJoin(plan: LogicalPlan) = {
-    plan match {
-      case p@Project(_, join@Join(_, _, _, _)) => join
-      case p@Project(_, Filter(_, join@Join(_, _, _, _))) => join
-      case p@Aggregate(_, _, Filter(_, join@Join(_, _, _, _))) => join
-      case p@Aggregate(_, _, join@Join(_, _, _, _)) => join
-    }
+    new RewriteContext(targetViewPlan, ProcessedComponent(
+      queryConjunctivePredicates,
+      viewConjunctivePredicates,
+      queryProjectList,
+      viewProjectList,
+      queryGroupingExpressions,
+      viewGroupingExpressions,
+      queryAggregateExpressions,
+      viewAggregateExpressions,
+      viewJoins,
+      queryJoins
+    ))
   }
 }
 

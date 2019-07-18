@@ -1,15 +1,19 @@
 package org.apache.spark.sql.catalyst.optimizer.rewrite.component
 
 import org.apache.spark.sql.catalyst.expressions.AttributeReference
-import org.apache.spark.sql.catalyst.optimizer.rewrite.rule.{CompensationExpressions, ExpressionMatcher, RewriteFail, ViewLogicalPlan}
+import org.apache.spark.sql.catalyst.optimizer.rewrite.rule._
 import org.apache.spark.sql.catalyst.plans.logical.{Filter, Join, SubqueryAlias}
 
 /**
   * 2019-07-16 WilliamZhu(allwefantasy@gmail.com)
   */
-class JoinMatcher(viewLogicalPlan: ViewLogicalPlan, viewJoin: Join, queryJoin: Join
+class JoinMatcher(rewriteContext: RewriteContext
                  ) extends ExpressionMatcher {
   override def compare: CompensationExpressions = {
+
+
+    val viewJoin = rewriteContext.processedComponent.viewJoins.head
+    val queryJoin = rewriteContext.processedComponent.queryJoins.head
     // since the prediate condition will be pushed down into Join filter,
     // but we have compare them in Predicate Matcher/Rewrite step, so when compare Join,
     // we should clean the filter from Join
@@ -20,7 +24,7 @@ class JoinMatcher(viewLogicalPlan: ViewLogicalPlan, viewJoin: Join, queryJoin: J
   }
 
   def cleanJoinFilter(join: Join) = {
-    val newPlan = join transformUp  {
+    val newPlan = join transformUp {
       case a@Filter(_, child) =>
         child
       case SubqueryAlias(_, a@SubqueryAlias(_, _)) =>

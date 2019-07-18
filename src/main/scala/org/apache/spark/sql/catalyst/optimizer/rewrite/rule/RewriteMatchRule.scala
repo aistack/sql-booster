@@ -3,7 +3,9 @@ package org.apache.spark.sql.catalyst.optimizer.rewrite.rule
 import org.apache.spark.internal.Logging
 import org.apache.spark.sql.catalyst.expressions.{Attribute, Expression}
 import org.apache.spark.sql.catalyst.optimizer.RewriteHelper
-import org.apache.spark.sql.catalyst.plans.logical.LogicalPlan
+import org.apache.spark.sql.catalyst.plans.logical.{Join, LogicalPlan}
+
+import scala.collection.mutable.ArrayBuffer
 
 
 /**
@@ -31,10 +33,26 @@ trait RewriteMatchRule extends RewriteHelper {
 
   def rewrite(plan: LogicalPlan): LogicalPlan
 
+  def buildPipeline[_](rewriteContext: RewriteContext, items: Seq[MatchOrRewrite]) = {
+    val pipeline = ArrayBuffer[PipelineItemExecutor]()
+    items.grouped(2).foreach { items =>
+      pipeline += PipelineItemExecutor(items(0).asInstanceOf[ExpressionMatcher], items(1).asInstanceOf[LogicalPlanRewrite])
+    }
+    pipeline
+  }
+
 
 }
 
-trait MatchOrRewrite {}
+trait MatchOrRewrite {
+  def rewrite(plan: LogicalPlan): LogicalPlan = {
+    plan
+  }
+
+  def compare: CompensationExpressions = {
+    CompensationExpressions(false, Seq())
+  }
+}
 
 trait LogicalPlanRewrite extends MatchOrRewrite with RewriteHelper {
   protected var _compensationExpressions: CompensationExpressions = null
@@ -205,4 +223,18 @@ case class RewritedLeafLogicalPlan(inner: LogicalPlan) extends LogicalPlan {
 
 case class ViewLogicalPlan(tableLogicalPlan: LogicalPlan, viewCreateLogicalPlan: LogicalPlan)
 
+case class RewriteContext(viewLogicalPlan: ViewLogicalPlan, processedComponent: ProcessedComponent)
+
+case class ProcessedComponent(
+                               queryConjunctivePredicates: Seq[Expression] = Seq(),
+                               viewConjunctivePredicates: Seq[Expression] = Seq(),
+                               queryProjectList: Seq[Expression] = Seq(),
+                               viewProjectList: Seq[Expression] = Seq(),
+                               queryGroupingExpressions: Seq[Expression] = Seq(),
+                               viewGroupingExpressions: Seq[Expression] = Seq(),
+                               queryAggregateExpressions: Seq[Expression] = Seq(),
+                               viewAggregateExpressions: Seq[Expression] = Seq(),
+                               viewJoins: Seq[Join] = Seq(),
+                               queryJoins: Seq[Join] = Seq()
+                             )
 

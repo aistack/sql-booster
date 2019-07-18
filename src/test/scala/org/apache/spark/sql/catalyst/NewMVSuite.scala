@@ -10,8 +10,10 @@ class NewMVSuite extends BaseSuite {
 
   ViewCatalyst.createViewCatalyst()
 
-  test("test 1") {
-    createTable(
+  override def beforeAll() = {
+    super.init()
+
+    schemaReg.createRDTable(
       """
         |CREATE TABLE depts(
         |  deptno INT NOT NULL,
@@ -20,7 +22,7 @@ class NewMVSuite extends BaseSuite {
         |);
       """.stripMargin)
 
-    createTable(
+    schemaReg.createRDTable(
       """
         |CREATE TABLE locations(
         |  locationid INT NOT NULL,
@@ -29,7 +31,7 @@ class NewMVSuite extends BaseSuite {
         |);
       """.stripMargin)
 
-    createTable(
+    schemaReg.createRDTable(
       """
         |CREATE TABLE emps(
         |  empid INT NOT NULL,
@@ -43,14 +45,22 @@ class NewMVSuite extends BaseSuite {
         |);
       """.stripMargin)
 
-    createMV("emps_mv",
+    schemaReg.createHiveTable("src",
+      """
+        |CREATE TABLE IF NOT EXISTS src (key INT, value STRING) USING hive
+      """.stripMargin)
+  }
+
+  test("test 1") {
+
+    schemaReg.createMV("emps_mv",
       """
         |SELECT empid
         |FROM emps
         |JOIN depts ON depts.deptno = emps.deptno
       """.stripMargin)
 
-    val rewrite = MaterializedViewOptimizeRewrite.execute(toLogicalPlan(
+    val rewrite = MaterializedViewOptimizeRewrite.execute(schemaReg.toLogicalPlan(
       """
         |SELECT empid
         |FROM emps
@@ -59,7 +69,10 @@ class NewMVSuite extends BaseSuite {
         |where emps.empid=1
       """.stripMargin))
 
-    genSQL(rewrite)
+    println(rewrite)
+
+    println(schemaReg.genPrettySQL(rewrite))
 
   }
+
 }

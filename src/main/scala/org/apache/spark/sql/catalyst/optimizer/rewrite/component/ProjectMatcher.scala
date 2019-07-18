@@ -1,13 +1,12 @@
 package org.apache.spark.sql.catalyst.optimizer.rewrite.component
 
-import org.apache.spark.sql.catalyst.expressions.Expression
 import org.apache.spark.sql.catalyst.optimizer.rewrite.component.util.{ExpressionIntersectResp, ExpressionSemanticEquals}
-import org.apache.spark.sql.catalyst.optimizer.rewrite.rule.{CompensationExpressions, ExpressionMatcher, RewriteFail, ViewLogicalPlan}
+import org.apache.spark.sql.catalyst.optimizer.rewrite.rule._
 
 /**
   * 2019-07-14 WilliamZhu(allwefantasy@gmail.com)
   */
-class ProjectMatcher(viewLogicalPlan: ViewLogicalPlan, query: Seq[Expression], view: Seq[Expression]) extends ExpressionMatcher {
+class ProjectMatcher(rewriteContext: RewriteContext) extends ExpressionMatcher {
   /**
     *
     * @param query the project expression list in query
@@ -20,6 +19,8 @@ class ProjectMatcher(viewLogicalPlan: ViewLogicalPlan, query: Seq[Expression], v
     */
   override def compare: CompensationExpressions = {
 
+    val query = rewriteContext.processedComponent.queryProjectList
+    val view = rewriteContext.processedComponent.viewProjectList
     val ExpressionIntersectResp(queryLeft, viewLeft, _) = ExpressionSemanticEquals.process(query, view)
     // for now, we must make sure the queryLeft's columns(not alias) all in viewLeft.columns(not alias)
     val queryColumns = queryLeft.flatMap(extractAttributeReference)

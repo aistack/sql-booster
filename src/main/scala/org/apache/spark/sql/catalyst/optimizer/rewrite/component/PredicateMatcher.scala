@@ -1,7 +1,7 @@
 package org.apache.spark.sql.catalyst.optimizer.rewrite.component
 
 import org.apache.spark.sql.catalyst.expressions.{EqualNullSafe, EqualTo, Expression, GreaterThan, GreaterThanOrEqual, LessThan, LessThanOrEqual, Literal}
-import org.apache.spark.sql.catalyst.optimizer.rewrite.rule.{CompensationExpressions, ExpressionMatcher, RewriteFail, ViewLogicalPlan}
+import org.apache.spark.sql.catalyst.optimizer.rewrite.rule._
 import org.apache.spark.sql.types._
 
 import scala.collection.mutable.ArrayBuffer
@@ -20,21 +20,17 @@ import scala.collection.mutable.ArrayBuffer
   *
   *
   */
-class PredicateMatcher(viewLogicalPlan: ViewLogicalPlan,
-                       viewProjectList: Seq[Expression],
-                       queryConjunctivePredicates: Seq[Expression],
-                       viewConjunctivePredicates: Seq[Expression]
-                      ) extends ExpressionMatcher {
+class PredicateMatcher(rewriteContext: RewriteContext) extends ExpressionMatcher {
 
   override def compare: CompensationExpressions = {
 
     val compensationCond = ArrayBuffer[Expression]()
 
-    if (viewConjunctivePredicates.size > queryConjunctivePredicates.size) return RewriteFail.PREDICATE_UNMATCH(this)
+    if (rewriteContext.processedComponent.viewConjunctivePredicates.size > rewriteContext.processedComponent.queryConjunctivePredicates.size) return RewriteFail.PREDICATE_UNMATCH(this)
 
     // equal expression compare
-    val viewEqual = extractEqualConditions(viewConjunctivePredicates)
-    val queryEqual = extractEqualConditions(queryConjunctivePredicates)
+    val viewEqual = extractEqualConditions(rewriteContext.processedComponent.viewConjunctivePredicates)
+    val queryEqual = extractEqualConditions(rewriteContext.processedComponent.queryConjunctivePredicates)
 
     // if viewEqual are not subset of queryEqual, then it will not match.
     if (!isSubSetOf(viewEqual, queryEqual)) return RewriteFail.PREDICATE_EQUALS_UNMATCH(this)
@@ -45,8 +41,8 @@ class PredicateMatcher(viewLogicalPlan: ViewLogicalPlan,
     // make sure all less/greater expression with the same presentation
     // for example if exits a < 3 && a>=1 then we should change to RangeCondition(a,1,3)
     // or b < 3 then RangeCondition(b,None,3)
-    val viewRange = extractRangeConditions(viewConjunctivePredicates).map(convertRangeCon)
-    val queryRange = extractRangeConditions(queryConjunctivePredicates).map(convertRangeCon)
+    val viewRange = extractRangeConditions(rewriteContext.processedComponent.viewConjunctivePredicates).map(convertRangeCon)
+    val queryRange = extractRangeConditions(rewriteContext.processedComponent.queryConjunctivePredicates).map(convertRangeCon)
 
     // combine something like
     // RangeCondition(a,1,None),RangeCondition(a,None,3) into RangeCondition(a,1,3)
@@ -76,14 +72,14 @@ class PredicateMatcher(viewLogicalPlan: ViewLogicalPlan,
     compensationCond ++= (subset[RangeCondition](queryRangeCondtion, viewRangeCondition).flatMap(_.toExpression))
 
     // other conditions compare
-    val viewResidual = extractResidualConditions(viewConjunctivePredicates)
-    val queryResidual = extractResidualConditions(queryConjunctivePredicates)
+    val viewResidual = extractResidualConditions(rewriteContext.processedComponent.viewConjunctivePredicates)
+    val queryResidual = extractResidualConditions(rewriteContext.processedComponent.queryConjunctivePredicates)
     if (!isSubSetOf(viewResidual, queryResidual)) return RewriteFail.PREDICATE_EXACLTY_SAME_UNMATCH(this)
     compensationCond ++= subset[Expression](queryResidual, viewResidual)
 
     // make sure all attributeReference in compensationCond is also in output of view
     // we get all columns without applied any function in projectList of viewCreateLogicalPlan
-    val viewAttrs = extractAttributeReferenceFromFirstLevel(viewProjectList)
+    val viewAttrs = extractAttributeReferenceFromFirstLevel(rewriteContext.processedComponent.viewProjectList)
 
     val compensationCondAllInViewProjectList = isSubSetOf(compensationCond.flatMap(extractAttributeReference), viewAttrs)
 

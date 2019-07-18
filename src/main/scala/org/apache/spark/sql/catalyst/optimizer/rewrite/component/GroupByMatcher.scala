@@ -1,15 +1,14 @@
 package org.apache.spark.sql.catalyst.optimizer.rewrite.component
 
 import org.apache.spark.sql.catalyst.expressions.Expression
-import org.apache.spark.sql.catalyst.optimizer.rewrite.rule.{CompensationExpressions, ExpressionMatcher, RewriteFail, ViewLogicalPlan}
+import org.apache.spark.sql.catalyst.optimizer.rewrite.rule._
 
 import scala.collection.mutable.ArrayBuffer
 
 /**
   * 2019-07-15 WilliamZhu(allwefantasy@gmail.com)
   */
-class GroupByMatcher(viewLogicalPlan: ViewLogicalPlan, viewAggregateExpressions: Seq[Expression],
-                     query: Seq[Expression], view: Seq[Expression]) extends ExpressionMatcher {
+class GroupByMatcher(rewriteContext: RewriteContext) extends ExpressionMatcher {
   override def compare: CompensationExpressions = {
     /**
       * Query:
@@ -35,6 +34,10 @@ class GroupByMatcher(viewLogicalPlan: ViewLogicalPlan, viewAggregateExpressions:
       *
       * then  query  isSubSet of view . Please take care of the order in group by.
       */
+    val query = rewriteContext.processedComponent.queryGroupingExpressions
+    val view = rewriteContext.processedComponent.viewGroupingExpressions
+    val viewAggregateExpressions = rewriteContext.processedComponent.viewAggregateExpressions
+
     if (query.size > view.size) return RewriteFail.GROUP_BY_SIZE_UNMATCH(this)
     if (!isSubSetOf(query, view)) return RewriteFail.GROUP_BY_SIZE_UNMATCH(this)
 

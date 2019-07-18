@@ -1,12 +1,10 @@
 package org.apache.spark.sql.catalyst.optimizer.rewrite.rule
 
 import org.apache.spark.sql.catalyst.expressions.Expression
-import org.apache.spark.sql.catalyst.optimizer.rewrite.component.rewrite.{PredicateRewrite, ProjectRewrite, TableOrViewRewrite}
-import org.apache.spark.sql.catalyst.optimizer.rewrite.component.{PredicateMatcher, ProjectMatcher, TableNonOpMatcher}
+import org.apache.spark.sql.catalyst.optimizer.rewrite.component._
+import org.apache.spark.sql.catalyst.optimizer.rewrite.component.rewrite._
 import org.apache.spark.sql.catalyst.plans.logical._
 import tech.mlsql.sqlbooster.meta.ViewCatalyst
-
-import scala.collection.mutable.ArrayBuffer
 
 /**
   * 2019-07-14 WilliamZhu(allwefantasy@gmail.com)
@@ -114,31 +112,35 @@ class WithoutJoinGroupRule extends RewriteMatchRule {
         viewProjectList = projectList
     }
 
+
+    val rewriteContext = new RewriteContext(targetViewPlan, ProcessedComponent(
+      queryConjunctivePredicates,
+      viewConjunctivePredicates,
+      queryProjectList,
+      viewProjectList,
+      Seq(),
+      Seq(),
+      Seq(),
+      Seq(),
+      Seq(),
+      Seq()
+    ))
+
     /**
       * Three match/rewrite steps:
       *   1. Predicate
       *   2. Project
       *   3. Table(View)
       */
-    val pipeline = ArrayBuffer[PipelineItemExecutor]()
+    val pipeline = buildPipeline(rewriteContext: RewriteContext, Seq(
+      new PredicateMatcher(rewriteContext),
+      new PredicateRewrite(rewriteContext),
+      new ProjectMatcher(rewriteContext),
+      new ProjectRewrite(rewriteContext),
+      new TableNonOpMatcher(rewriteContext),
+      new TableOrViewRewrite(targetViewPlan)
 
-
-    val predicateMatcher = new PredicateMatcher(targetViewPlan, viewProjectList, queryConjunctivePredicates, viewConjunctivePredicates)
-    val predicateRewrite = new PredicateRewrite(targetViewPlan)
-
-    pipeline += PipelineItemExecutor(predicateMatcher, predicateRewrite)
-
-
-    val projectMatcher = new ProjectMatcher(targetViewPlan, queryProjectList, viewProjectList)
-    val projectRewrite = new ProjectRewrite(targetViewPlan)
-
-    pipeline += PipelineItemExecutor(projectMatcher, projectRewrite)
-
-
-    val tableMatcher = new TableNonOpMatcher()
-    val tableRewrite = new TableOrViewRewrite(targetViewPlan)
-
-    pipeline += PipelineItemExecutor(tableMatcher, tableRewrite)
+    ))
 
     /**
       * When we are rewriting plan, any step fails, we should return the original plan.

@@ -1,15 +1,15 @@
 package org.apache.spark.sql.catalyst.optimizer.rewrite.component.rewrite
 
 import org.apache.spark.sql.catalyst.expressions.{AttributeReference, NamedExpression}
-import org.apache.spark.sql.catalyst.optimizer.rewrite.rule.{LogicalPlanRewrite, RewritedLeafLogicalPlan, ViewLogicalPlan}
+import org.apache.spark.sql.catalyst.optimizer.rewrite.rule.{LogicalPlanRewrite, RewriteContext, RewritedLeafLogicalPlan, ViewLogicalPlan}
 import org.apache.spark.sql.catalyst.plans.logical.{Aggregate, LogicalPlan}
 
 /**
   * 2019-07-15 WilliamZhu(allwefantasy@gmail.com)
   */
-class AggRewrite(viewLogicalPlan: ViewLogicalPlan) extends LogicalPlanRewrite {
+class AggRewrite(rewriteContext: RewriteContext) extends LogicalPlanRewrite {
   override def rewrite(plan: LogicalPlan): LogicalPlan = {
-    val projectOrAggList = viewLogicalPlan.tableLogicalPlan.output
+    val projectOrAggList = rewriteContext.viewLogicalPlan.tableLogicalPlan.output
 
     val newExpressions = _compensationExpressions.compensation.map { expr =>
       expr transformDown {

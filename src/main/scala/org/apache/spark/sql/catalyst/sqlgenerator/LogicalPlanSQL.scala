@@ -3,7 +3,7 @@ package org.apache.spark.sql.catalyst.sqlgenerator
 import java.util.concurrent.atomic.AtomicLong
 
 import org.apache.spark.sql.catalyst.expressions.aggregate.{AggregateExpression, AggregateFunction, Last}
-import org.apache.spark.sql.catalyst.expressions.{Alias, AttributeReference, BinaryOperator, CaseWhen, Cast, CheckOverflow, Coalesce, Contains, DayOfMonth, EndsWith, EqualTo, Exists, ExprId, Expression, GetArrayStructFields, GetStructField, Hour, If, In, InSet, IsNotNull, IsNull, Like, ListQuery, Literal, MakeDecimal, Minute, Month, NamedExpression, Not, ParseToDate, RLike, RegExpExtract, RegExpReplace, ScalarSubquery, Second, SortOrder, StartsWith, StringLocate, StringPredicate, SubqueryExpression, UnscaledValue, Year}
+import org.apache.spark.sql.catalyst.expressions.{Alias, And, AttributeReference, BinaryOperator, CaseWhen, Cast, CheckOverflow, Coalesce, Contains, DayOfMonth, EndsWith, EqualTo, Exists, ExprId, Expression, GetArrayStructFields, GetStructField, Hour, If, In, InSet, IsNotNull, IsNull, Like, ListQuery, Literal, MakeDecimal, Minute, Month, NamedExpression, Not, ParseToDate, RLike, RegExpExtract, RegExpReplace, ScalarSubquery, Second, SortOrder, StartsWith, StringLocate, StringPredicate, SubqueryExpression, UnscaledValue, Year}
 import org.apache.spark.sql.catalyst.optimizer.{CollapseProject, CombineUnions}
 import org.apache.spark.sql.catalyst.plans.logical._
 import org.apache.spark.sql.catalyst.rules.{Rule, RuleExecutor}
@@ -42,7 +42,18 @@ class LogicalPlanSQL(plan: LogicalPlan, dialect: SQLDialect) {
   def canonicalize(plan: LogicalPlan): LogicalPlan =
     Canonicalizer.execute(plan)
 
-  def finalPlan(plan: LogicalPlan): LogicalPlan = {
+  def finalPlan(_plan: LogicalPlan): LogicalPlan = {
+
+    // pull up the filter out of the join and combine all where conditions
+    val plan = _plan transformUp {
+      case a@Join(l@Filter(lc, lchild), r@Filter(rc, rchild), joinType, condition) =>
+        Filter(And(lc, rc), Join(lchild, rchild, joinType, condition))
+      case a@Join(f@Filter(lc, lchild), r, joinType, condition) => Filter(lc, Join(lchild, r, joinType, condition))
+      case a@Join(l, r@Filter(rc, rchild), joinType, condition) => Filter(rc, Join(l, rchild, joinType, condition))
+    } transformDown {
+      case Filter(con, Filter(con1, child)) => Filter(And(con, con1), child)
+    }
+
     val realOutputNames: Seq[String] = plan.output.map(_.name)
     val canonicalizedPlan = if (dialect.enableCanonicalize) canonicalize(plan) else plan
     val canonicalizedToReal = canonicalizedPlan.output.zip(realOutputNames)
@@ -99,7 +110,7 @@ class LogicalPlanSQL(plan: LogicalPlan, dialect: SQLDialect) {
       dialect.relation(r)
     case r: LogicalRDD => "__SHOULD_NOT_BE_HERE__"
     case r: OneRowRelation => "__SHOULD_NOT_BE_HERE__"
-    case Filter(condition, child) =>
+    case r@Filter(condition, child) =>
       val whereOrHaving = child match {
         case _: Aggregate => "HAVING"
         case _ => "WHERE"
