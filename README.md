@@ -129,7 +129,7 @@ assert(schemaReg.genSQL(rewrite3)
 
 ## Data Lineage Usage
 
-Giving a SQL, sql-booster can help you analysis:
+Given a SQL, sql-booster can help you analysis:
 
 1. tables and their corresponding columns which this sql dependents includes the columns used in where,select,join condition.
 2. every output column of this sql is composed by which columns in the original tables
