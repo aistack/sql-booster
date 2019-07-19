@@ -1,7 +1,7 @@
 package tech.mlsql.sqlbooster.analysis
 
 import org.apache.spark.sql.catalyst.expressions.{AttributeReference, Expression}
-import org.apache.spark.sql.catalyst.plans.logical.{Aggregate, Filter, Join, LogicalPlan}
+import org.apache.spark.sql.catalyst.plans.logical._
 
 import scala.collection.mutable.ArrayBuffer
 
@@ -10,7 +10,6 @@ case class DataLineage(outputMapToSourceTable: Seq[OutputColumnToSourceTableAndC
 case class TableAndUsedColumns(tableName: String, columns: Seq[String], locates: Seq[Seq[String]])
 
 case class OutputColumnToSourceTableAndColumn(name: String, sources: Seq[TableAndUsedColumns])
-
 
 
 object Location {
@@ -37,6 +36,11 @@ object Location {
           locates += GROUP_BY
         }
         if (existsIn(exp, aggregateExpressions)) {
+          locates += PROJECT
+        }
+        a
+      case a@Project(projectList, _) =>
+        if (existsIn(exp, projectList)) {
           locates += PROJECT
         }
         a

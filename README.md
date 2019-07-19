@@ -134,6 +134,8 @@ Given a SQL, sql-booster can help you analysis:
 1. tables and their corresponding columns which this sql dependents includes the columns used in where,select,join condition.
 2. every output column of this sql is composed by which columns in the original tables
 
+NOTICE: sql-booster needs you to register table schema firstly like described in **View-based query rewriting usage**.
+
 Here is the example code:
 
 ```scala
@@ -156,24 +158,39 @@ then output is like this:
     "name":"empid",
     "sources":[{
       "tableName":"emps",
-      "columns":["empid"]
+      "columns":["empid"],
+      "locates":[["PROJECT","FILTER"]]
     },{
       "tableName":"depts",
-      "columns":[]
+      "columns":[],
+      "locates":[]
     }]
   }],
   "dependences":[{
     "tableName":"emps",
-    "columns":["empid","deptno"]
+    "columns":["empid","deptno"],
+    "locates":[["PROJECT","FILTER"],["JOIN"]]
   },{
     "tableName":"depts",
-    "columns":["deptno"]
+    "columns":["deptno"],
+    "locates":[["JOIN"]]
   }]
 }
 ```
 
 this means the new table only have one column named empid, and it depends empid in table emps.
-the new table depends emps and depts, and empid,deptno are required. 
+the new table depends emps and depts, and empid,deptno are required.
+
+Also, sql-booster tell you the column appears in which part of the sql. There are 3 parts:
+
+```
+FILTER
+GROUP_BY
+JOIN
+PROJECT
+``` 
+
+As to the example, depts.depno exists in `Join`, and emps.empid exists in PROJECT and FILTER(where condition). 
  
 
 
