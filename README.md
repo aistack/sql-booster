@@ -17,7 +17,7 @@ You can link against this library in your program at the following coordinates:
 ```
 groupId: tech.mlsql
 artifactId: sql-booster_2.11
-version: 0.2.0
+version: 0.3.0
 ```
 ## Deployment 
 
