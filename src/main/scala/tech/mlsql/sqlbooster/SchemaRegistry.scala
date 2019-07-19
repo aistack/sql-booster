@@ -2,6 +2,7 @@ package tech.mlsql.sqlbooster
 
 import com.alibaba.druid.sql.SQLUtils
 import com.alibaba.druid.util.JdbcConstants
+import org.apache.spark.sql.catalyst.SessionUtil
 import org.apache.spark.sql.catalyst.plans.logical.{LogicalPlan, SubqueryAlias}
 import org.apache.spark.sql.catalyst.sqlgenerator.{BasicSQLDialect, LogicalPlanSQL}
 import org.apache.spark.sql.types.StructType
@@ -13,7 +14,8 @@ import tech.mlsql.sqlbooster.meta.ViewCatalyst
 /**
   * 2019-07-18 WilliamZhu(allwefantasy@gmail.com)
   */
-class SchemaRegistry(spark: SparkSession) {
+class SchemaRegistry(_spark: SparkSession) {
+  val spark = SessionUtil.cloneSession(_spark)
 
   def createRDTable(createSQL: String) = {
     val rd = new RDSchema(JdbcConstants.MYSQL)

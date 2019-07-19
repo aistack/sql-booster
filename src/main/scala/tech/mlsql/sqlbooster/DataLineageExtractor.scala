@@ -4,9 +4,10 @@ import org.apache.spark.sql.catalyst.catalog.HiveTableRelation
 import org.apache.spark.sql.catalyst.expressions.{AttributeReference, Expression}
 import org.apache.spark.sql.catalyst.optimizer.RewriteHelper
 import org.apache.spark.sql.catalyst.optimizer.rewrite.rule.RewritedLeafLogicalPlan
-import org.apache.spark.sql.catalyst.plans.logical.{LogicalPlan, SubqueryAlias}
+import org.apache.spark.sql.catalyst.plans.logical._
 import org.apache.spark.sql.execution.LogicalRDD
 import org.apache.spark.sql.execution.datasources.LogicalRelation
+import tech.mlsql.sqlbooster.analysis._
 
 import scala.collection.mutable.ArrayBuffer
 
@@ -23,12 +24,18 @@ object DataLineageExtractor extends RewriteHelper {
     def findDependencesFromColumns(columns: Seq[Expression]) = {
       val tempHolder = ArrayBuffer[TableAndUsedColumns]()
       tables.foreach { table =>
-        val tableAndUsedColumns = TableAndUsedColumns(table.table, Seq())
+        val tableAndUsedColumns = TableAndUsedColumns(table.table, Seq(), Seq())
         val tableOutput = table.output
         val tempItems = columns.flatMap { atr =>
           tableOutput.filter(f => f.semanticEquals(atr)).toSet
         }
-        tempHolder += tableAndUsedColumns.copy(columns = tempItems.map(f => f.name).toSet.toSeq)
+        val tempColumns = tempItems.map(f => (f.name, Location.locate(plan, f))).groupBy(_._1).map { ar =>
+          (ar._1, ar._2.flatMap(f => f._2).toSet.toSeq)
+        }
+        tempHolder += tableAndUsedColumns.copy(
+          columns = tempColumns.map(_._1).toSeq,
+          locates = tempColumns.map(_._2).toSeq
+        )
       }
       tempHolder
     }
@@ -72,8 +79,4 @@ object DataLineageExtractor extends RewriteHelper {
   }
 }
 
-case class DataLineage(outputMapToSourceTable: Seq[OutputColumnToSourceTableAndColumn], dependences: Seq[TableAndUsedColumns])
 
-case class TableAndUsedColumns(tableName: String, columns: Seq[String])
-
-case class OutputColumnToSourceTableAndColumn(name: String, sources: Seq[TableAndUsedColumns])
