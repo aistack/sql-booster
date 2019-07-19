@@ -1,7 +1,7 @@
 # sql-booster
 
 This is a library for SQL optimizing/rewriting. 
-Current version (0.2.0) we have already supports:
+Current version (0.4.0) we have already supports:
  
 1. Materialized View rewrite.
 2. Data Lineage analysis
@@ -17,7 +17,7 @@ You can link against this library in your program at the following coordinates:
 ```
 groupId: tech.mlsql
 artifactId: sql-booster_2.11
-version: 0.3.0
+version: 0.4.0
 ```
 ## Deployment 
 
@@ -37,7 +37,8 @@ sql-booster supports three kinds of create statement:
 
 1. MySQL/Oracle 
 2. Hive
-3. [SimpleSchema](https://github.com/allwefantasy/simple-schema)  
+3. [SimpleSchema](https://github.com/allwefantasy/simple-schema)
+4. Spark StructType json  
 
 
 Steps:
@@ -52,7 +53,7 @@ val schemaReg = new SchemaRegistry(spark)
 2. register tables:
 
 ```scala
-schemaReg.createRDTable(
+schemaReg.createTableFromDBSQL(
       """
         |CREATE TABLE depts(
         |  deptno INT NOT NULL,
@@ -61,7 +62,7 @@ schemaReg.createRDTable(
         |);
       """.stripMargin)
 
-schemaReg.createRDTable(
+schemaReg.createTableFromDBSQL(
   """
     |CREATE TABLE locations(
     |  locationid INT NOT NULL,
@@ -70,7 +71,7 @@ schemaReg.createRDTable(
     |);
   """.stripMargin)
 
-schemaReg.createRDTable(
+schemaReg.createTableFromDBSQL(
   """
     |CREATE TABLE emps(
     |  empid INT NOT NULL,
@@ -84,10 +85,18 @@ schemaReg.createRDTable(
     |);
   """.stripMargin)
 
-schemaReg.createHiveTable("src",
+schemaReg.createTableFromHiveSQL("src",
   """
     |CREATE TABLE IF NOT EXISTS src (key INT, value STRING) USING hive
   """.stripMargin)
+  
+  
+schemaReg.createTableFromSimpleSchema("table1","""st(field(a,string),field(b,string))""")
+
+schemaReg.createTableFromJson("table2",
+      """
+        |{"type":"struct","fields":[{"name":"a","type":"string","nullable":true,"metadata":{}},{"name":"b","type":"string","nullable":true,"metadata":{}}]}
+      """.stripMargin)  
 ```
 
 

@@ -32,7 +32,7 @@ class BaseSuite extends FunSuite
   }
 
   def prepareDefaultTables = {
-    schemaReg.createRDTable(
+    schemaReg.createTableFromDBSQL(
       """
         |CREATE TABLE depts(
         |  deptno INT NOT NULL,
@@ -41,7 +41,7 @@ class BaseSuite extends FunSuite
         |);
       """.stripMargin)
 
-    schemaReg.createRDTable(
+    schemaReg.createTableFromDBSQL(
       """
         |CREATE TABLE locations(
         |  locationid INT NOT NULL,
@@ -50,7 +50,7 @@ class BaseSuite extends FunSuite
         |);
       """.stripMargin)
 
-    schemaReg.createRDTable(
+    schemaReg.createTableFromDBSQL(
       """
         |CREATE TABLE emps(
         |  empid INT NOT NULL,
@@ -64,7 +64,7 @@ class BaseSuite extends FunSuite
         |);
       """.stripMargin)
 
-    schemaReg.createHiveTable("src",
+    schemaReg.createTableFromHiveSQL("src",
       """
         |CREATE TABLE IF NOT EXISTS src (key INT, value STRING) USING hive
       """.stripMargin)

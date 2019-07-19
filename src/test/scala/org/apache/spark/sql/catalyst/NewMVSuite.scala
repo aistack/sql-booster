@@ -13,6 +13,12 @@ class NewMVSuite extends BaseSuite {
   override def beforeAll() = {
     super.init()
     super.prepareDefaultTables
+//    schemaReg.createTableFromSimpleSchema("table1","""st(field(a,string),field(b,string))""")
+    //    println(SparkSimpleSchemaParser.parse("""st(field(a,string),field(b,string))""").asInstanceOf[StructType].json)
+    //    schemaReg.createTableFromJson("table2",
+    //      """
+    //        |{"type":"struct","fields":[{"name":"a","type":"string","nullable":true,"metadata":{}},{"name":"b","type":"string","nullable":true,"metadata":{}}]}
+    //      """.stripMargin)
   }
 
   test("test join") {

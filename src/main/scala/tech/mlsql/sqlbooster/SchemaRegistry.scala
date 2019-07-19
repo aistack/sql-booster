@@ -5,7 +5,7 @@ import com.alibaba.druid.util.JdbcConstants
 import org.apache.spark.sql.catalyst.SessionUtil
 import org.apache.spark.sql.catalyst.plans.logical.{LogicalPlan, SubqueryAlias}
 import org.apache.spark.sql.catalyst.sqlgenerator.{BasicSQLDialect, LogicalPlanSQL}
-import org.apache.spark.sql.types.StructType
+import org.apache.spark.sql.types.{DataType, StructType}
 import org.apache.spark.sql.{Row, SparkSession}
 import tech.mlsql.schema.parser.SparkSimpleSchemaParser
 import tech.mlsql.sqlbooster.db.RDSchema
@@ -17,7 +17,7 @@ import tech.mlsql.sqlbooster.meta.ViewCatalyst
 class SchemaRegistry(_spark: SparkSession) {
   val spark = SessionUtil.cloneSession(_spark)
 
-  def createRDTable(createSQL: String) = {
+  def createTableFromDBSQL(createSQL: String) = {
     val rd = new RDSchema(JdbcConstants.MYSQL)
     val tableName = rd.createTable(createSQL)
     val schema = rd.getTableSchema(tableName)
@@ -26,7 +26,7 @@ class SchemaRegistry(_spark: SparkSession) {
     ViewCatalyst.meta.registerTableFromLogicalPlan(tableName, df.queryExecution.analyzed)
   }
 
-  def createHiveTable(tableName: String, createSQL: String) = {
+  def createTableFromHiveSQL(tableName: String, createSQL: String) = {
     spark.sql(createSQL)
     val lp = spark.table(tableName).queryExecution.analyzed match {
       case a@SubqueryAlias(name, child) => child
@@ -35,8 +35,15 @@ class SchemaRegistry(_spark: SparkSession) {
     ViewCatalyst.meta.registerTableFromLogicalPlan(tableName, lp)
   }
 
-  def createSPTable(tableName: String, schemaText: String) = {
+  def createTableFromSimpleSchema(tableName: String, schemaText: String) = {
     val schema = SparkSimpleSchemaParser.parse(schemaText).asInstanceOf[StructType]
+    val df = spark.createDataFrame(spark.sparkContext.emptyRDD[Row], schema)
+    df.createOrReplaceTempView(tableName)
+    ViewCatalyst.meta.registerTableFromLogicalPlan(tableName, df.queryExecution.analyzed)
+  }
+
+  def createTableFromJson(tableName: String, schemaJson: String) = {
+    val schema = DataType.fromJson(schemaJson).asInstanceOf[StructType]
     val df = spark.createDataFrame(spark.sparkContext.emptyRDD[Row], schema)
     df.createOrReplaceTempView(tableName)
     ViewCatalyst.meta.registerTableFromLogicalPlan(tableName, df.queryExecution.analyzed)
