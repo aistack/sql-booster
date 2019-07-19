@@ -213,8 +213,7 @@ case class RewritedLogicalPlan(inner: LogicalPlan, val stopPipeline: Boolean = f
   override def output: Seq[Attribute] = inner.output
 
   override def children: Seq[LogicalPlan] = Seq(inner)
-
-
+  
 }
 
 case class RewritedLeafLogicalPlan(inner: LogicalPlan) extends LogicalPlan {

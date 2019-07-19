@@ -126,6 +126,9 @@ trait RewriteHelper extends PredicateHelper {
       case a@SubqueryAlias(_, LogicalRDD(_, _, _, _, _)) =>
         tables += TableHolder(null, a.name.unquotedString, a.output, a)
         a
+      case a@SubqueryAlias(_, m@HiveTableRelation(tableMeta, _, _)) =>
+        tables += TableHolder(null, a.name.unquotedString, a.output, a)
+        a
       case m@HiveTableRelation(tableMeta, _, _) =>
         tables += TableHolder(tableMeta.database, tableMeta.identifier.table, m.output, m)
         m
@@ -329,6 +332,5 @@ trait RewriteHelper extends PredicateHelper {
     }
   }
 
-  
 
 }

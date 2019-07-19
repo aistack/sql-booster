@@ -31,6 +31,45 @@ class BaseSuite extends FunSuite
     schemaReg = new SchemaRegistry(spark)
   }
 
+  def prepareDefaultTables = {
+    schemaReg.createRDTable(
+      """
+        |CREATE TABLE depts(
+        |  deptno INT NOT NULL,
+        |  deptname VARCHAR(20),
+        |  PRIMARY KEY (deptno)
+        |);
+      """.stripMargin)
+
+    schemaReg.createRDTable(
+      """
+        |CREATE TABLE locations(
+        |  locationid INT NOT NULL,
+        |  state CHAR(2),
+        |  PRIMARY KEY (locationid)
+        |);
+      """.stripMargin)
+
+    schemaReg.createRDTable(
+      """
+        |CREATE TABLE emps(
+        |  empid INT NOT NULL,
+        |  deptno INT NOT NULL,
+        |  locationid INT NOT NULL,
+        |  empname VARCHAR(20) NOT NULL,
+        |  salary DECIMAL (18, 2),
+        |  PRIMARY KEY (empid),
+        |  FOREIGN KEY (deptno) REFERENCES depts(deptno),
+        |  FOREIGN KEY (locationid) REFERENCES locations(locationid)
+        |);
+      """.stripMargin)
+
+    schemaReg.createHiveTable("src",
+      """
+        |CREATE TABLE IF NOT EXISTS src (key INT, value STRING) USING hive
+      """.stripMargin)
+  }
+
   override def afterAll(): Unit = {
     //SparkSession.cleanupAnyExistingSession()
     spark.close()
