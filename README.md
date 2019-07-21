@@ -8,6 +8,13 @@ Current version (0.4.0) we have already supports:
 
 This project is under active development and *** NOT READY FOR PRODUCTION ***.
 
+# Online APIs
+
+We have provided free API `http://sql-booster.mlsql.tech`. You can visit `http://sql-booster.mlsql.tech/api` to 
+get all available APIs. We recommend you using PostMan to play with these APIs. Notice that most of the APIs only
+support POST method.
+
+please check: [HTTP API Tutorial](https://github.com/aistack/sql-booster/blob/master/docs/sql-booster-api.md)  
 
 # Liking
 You can link against this library in your program at the following coordinates:
