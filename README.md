@@ -190,7 +190,7 @@ then output is like this:
 this means the new table only have one column named empid, and it depends empid in table emps.
 the new table depends emps and depts, and empid,deptno are required.
 
-Also, sql-booster tell you the column appears in which part of the sql. There are 3 parts:
+Also, sql-booster tell you the column appears in which part of the sql. There are 4 parts:
 
 ```
 FILTER
