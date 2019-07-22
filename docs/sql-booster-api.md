@@ -102,7 +102,7 @@ The response:
 
 ## View Based SQL Rewrite
 
-Register View:(http://sql-booster.mlsql.tech/api_v1/view/register)
+Register View with API http://sql-booster.mlsql.tech/api_v1/view/register
 
 ```
 viewName:emps_mv
@@ -110,7 +110,7 @@ name:allwefantasy@gmail.com
 sql:SELECT empid↵FROM emps↵JOIN depts ON depts.deptno = emps.deptno
 ```
 
-Do rewriting:
+Do rewriting with API http://sql-booster.mlsql.tech/api_v1/mv/rewrite
 
 ```
 name:allwefantasy@gmail.com
